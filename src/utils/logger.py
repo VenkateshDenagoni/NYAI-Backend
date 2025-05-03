@@ -1,8 +1,10 @@
 import logging
 import uuid
 import sys
+import os
 from logging.handlers import RotatingFileHandler
 from functools import wraps
+from pathlib import Path
 from flask import request, g, has_request_context
 
 from src.config import config
@@ -28,27 +30,53 @@ def setup_logger(name="nyai"):
     if logger.handlers:
         logger.handlers.clear()
     
-    # Create handlers
-    file_handler = RotatingFileHandler(
-        config.LOG_FILE, 
-        maxBytes=10485760,  # 10MB
-        backupCount=5
-    )
+    # Get log file path from environment or config
+    log_file = os.getenv("LOG_FILE", config.LOG_FILE)
+    log_to_console = os.getenv("LOG_TO_CONSOLE", "false").lower() == "true"
+    
+    # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
     
     # Add filter to handlers
     request_id_filter = RequestIdFilter()
-    file_handler.addFilter(request_id_filter)
     console_handler.addFilter(request_id_filter)
     
     # Create formatter and add it to handlers
     formatter = logging.Formatter(config.LOG_FORMAT)
-    file_handler.setFormatter(formatter)
     console_handler.setFormatter(formatter)
     
-    # Add handlers to logger
-    logger.addHandler(file_handler)
+    # Add console handler
     logger.addHandler(console_handler)
+    
+    # Attempt to create file handler if not console-only mode
+    if not log_to_console:
+        try:
+            # Ensure the log directory exists
+            log_path = Path(log_file)
+            if not log_path.is_absolute():
+                # If relative path, put it in logs directory under app root
+                logs_dir = Path(__file__).parent.parent.parent / "logs"
+                logs_dir.mkdir(exist_ok=True)
+                log_path = logs_dir / log_file
+            
+            # Make sure parent directory exists
+            log_path.parent.mkdir(exist_ok=True, parents=True)
+            
+            # Create file handler
+            file_handler = RotatingFileHandler(
+                str(log_path), 
+                maxBytes=10485760,  # 10MB
+                backupCount=5
+            )
+            file_handler.addFilter(request_id_filter)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+            
+            logger.info(f"Logging to file: {log_path}")
+        except (IOError, PermissionError) as e:
+            logger.warning(f"Could not set up file logging: {e}. Falling back to console logging only.")
+    else:
+        logger.info("Console-only logging mode enabled")
     
     return logger
 
