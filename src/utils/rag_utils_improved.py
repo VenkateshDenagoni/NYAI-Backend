@@ -521,7 +521,12 @@ def create_cross_references(documents: List[Dict[str, Any]]) -> Dict[str, Dict[s
             # Make sure metadata exists
             if 'metadata' not in doc:
                 doc['metadata'] = {}
-            doc['metadata']['cross_references'] = list(set(cross_refs))[:5]
+                
+            # Convert list to string to avoid ChromaDB type issues
+            # ChromaDB expects metadata values to be str, int, float, or bool
+            cross_refs_limited = list(set(cross_refs))[:5]
+            doc['metadata']['cross_references_count'] = len(cross_refs_limited)
+            doc['metadata']['cross_references'] = ','.join(cross_refs_limited)
     
     return documents_dict
 

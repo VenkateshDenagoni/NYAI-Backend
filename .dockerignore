@@ -19,13 +19,20 @@ __pycache__/
 # Development and testing
 tests/
 notebooks/
-scripts/
+# scripts/ - Keep scripts directory for potential startup scripts
 docs/
 
-# Logs and databases
+# Logs (will be created in the container)
 *.log
+api.log
+nyai_api.log
+logs/*.log
+
+# Databases
 *.sqlite
 *.db
+# Keep the instance directory for SQLite databases
+# instance/ 
 
 # IDE files
 .idea/
@@ -34,12 +41,17 @@ docs/
 *.swp
 
 # Docker files
-.dockerignore
+# .dockerignore - Keep Dockerfile in the build context
 docker-compose.yml
 
 # Other
-README.md
+# README.md - Keep README
 LICENSE
 .pytest_cache/
 htmlcov/
-.coverage 
+.coverage
+
+# IMPORTANT: DO NOT exclude these directories
+# knowledge_base/ - Essential for RAG
+# src/ - Essential application code
+# requirements.txt - Essential for dependencies 

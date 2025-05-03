@@ -32,7 +32,15 @@ def setup_logger(name="nyai"):
     
     # Get log file path from environment or config
     log_file = os.getenv("LOG_FILE", config.LOG_FILE)
+    
+    # Check if we should log to console only (default to true in containerized environments)
+    # This is important for platforms like Railway where file system permissions may be restrictive
     log_to_console = os.getenv("LOG_TO_CONSOLE", "false").lower() == "true"
+    
+    # Force console logging in containerized environments by default
+    if os.getenv("RAILWAY_STATIC_URL") or os.getenv("RAILWAY_SERVICE_ID") or os.getenv("RAILWAY_PROJECT_ID"):
+        log_to_console = True
+        logger.info("Detected Railway environment - defaulting to console-only logging")
     
     # Create console handler
     console_handler = logging.StreamHandler(sys.stdout)
@@ -61,6 +69,15 @@ def setup_logger(name="nyai"):
             
             # Make sure parent directory exists
             log_path.parent.mkdir(exist_ok=True, parents=True)
+            
+            # Try creating an empty file to test write permissions
+            try:
+                if not log_path.exists():
+                    log_path.touch()
+                elif not os.access(str(log_path), os.W_OK):
+                    raise PermissionError(f"No write permission for log file: {log_path}")
+            except (IOError, PermissionError) as e:
+                raise PermissionError(f"Cannot write to log file {log_path}: {str(e)}")
             
             # Create file handler
             file_handler = RotatingFileHandler(

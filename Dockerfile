@@ -23,6 +23,18 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Create and configure directories for the non-root user
+RUN mkdir -p /app/logs /app/instance /app/nltk_data \
+    && chmod -R 777 /app/logs /app/instance /app/nltk_data \
+    && touch /app/logs/nyai_api.log \
+    && chmod 666 /app/logs/nyai_api.log
+
+# Download NLTK data as root (so it's available to all users)
+RUN python -m nltk.downloader -d /app/nltk_data punkt stopwords wordnet
+
+# Set environment variable to tell NLTK where to find the data
+ENV NLTK_DATA=/app/nltk_data
+
 # Create non-root user for security
 RUN adduser --disabled-password --gecos "" nyai
 USER nyai

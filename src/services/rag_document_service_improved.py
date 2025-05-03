@@ -1135,26 +1135,36 @@ class RAGDocumentService:
                             citation_parts.append(f"Topic: {metadata['Topic']}")
                     
                     # Include cross-reference count if available
-                    if "cross_references" in metadata and metadata["cross_references"]:
-                        citation_parts.append(f"Related References: {len(metadata['cross_references'])}")
-                
-                # Include relevance score
-                citation_parts.append(f"Relevance: {score:.2f}")
-                
-                # Include chunk information if available
-                if "chunk_index" in metadata and "total_chunks" in metadata:
-                    citation_parts.append(f"Part {metadata['chunk_index']+1} of {metadata['total_chunks']}")
-                
-                # Format citation with brackets
-                citation = f"[{'; '.join(citation_parts)}]\n"
-                
-                # Format the content differently based on document type
-                if doc_type == "qa" and "Question:" in content and "Answer:" in content:
-                    # For Q&A, format as question and answer
-                    context_parts.append(f"{content}\n{citation}")
-                else:
-                    # For other document types, add citation after content
-                    context_parts.append(f"{content}\n{citation}")
+                    if "cross_references" in metadata:
+                        # If cross_references is a string (new format)
+                        if isinstance(metadata["cross_references"], str) and metadata["cross_references"].strip():
+                            # Get the count either from cross_references_count or by counting commas
+                            if "cross_references_count" in metadata:
+                                ref_count = metadata["cross_references_count"]
+                            else:
+                                ref_count = metadata["cross_references"].count(',') + 1
+                            citation_parts.append(f"Related References: {ref_count}")
+                        # If cross_references is a list (old format)
+                        elif isinstance(metadata["cross_references"], list) and metadata["cross_references"]:
+                            citation_parts.append(f"Related References: {len(metadata['cross_references'])}")
+                    
+                    # Include relevance score
+                    citation_parts.append(f"Relevance: {score:.2f}")
+                    
+                    # Include chunk information if available
+                    if "chunk_index" in metadata and "total_chunks" in metadata:
+                        citation_parts.append(f"Part {metadata['chunk_index']+1} of {metadata['total_chunks']}")
+                    
+                    # Format citation with brackets
+                    citation = f"[{'; '.join(citation_parts)}]\n"
+                    
+                    # Format the content differently based on document type
+                    if doc_type == "qa" and "Question:" in content and "Answer:" in content:
+                        # For Q&A, format as question and answer
+                        context_parts.append(f"{content}\n{citation}")
+                    else:
+                        # For other document types, add citation after content
+                        context_parts.append(f"{content}\n{citation}")
             
             # Join all context parts
             context = "\n".join(context_parts)
@@ -1166,6 +1176,44 @@ class RAGDocumentService:
         except Exception as e:
             logger.error(f"Error getting relevant context for RAG: {e}")
             return ""
+
+    def _get_documents_by_ids(self, ids: List[str]) -> List[Dict[str, Any]]:
+        """Get documents by their IDs.
+        
+        Args:
+            ids: List of document IDs
+            
+        Returns:
+            List of document dictionaries
+        """
+        results = []
+        for doc_id in ids:
+            if doc_id in self.documents:
+                results.append(self.documents[doc_id])
+        return results
+
+    def _get_cross_references(self, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get cross-referenced documents.
+        
+        Args:
+            metadata: Document metadata containing cross_references
+            
+        Returns:
+            List of cross-referenced documents
+        """
+        referenced_docs = []
+        
+        # Handle the new format where cross_references is a comma-separated string
+        if 'cross_references' in metadata:
+            # Check if it's a string (new format) and split it
+            if isinstance(metadata['cross_references'], str):
+                reference_ids = metadata['cross_references'].split(',')
+                referenced_docs = self._get_documents_by_ids(reference_ids)
+            # Old format where it's a list
+            elif isinstance(metadata['cross_references'], list):
+                referenced_docs = self._get_documents_by_ids(metadata['cross_references'])
+            
+        return referenced_docs
 
 # Create singleton instance
 rag_document_service = RAGDocumentService()
