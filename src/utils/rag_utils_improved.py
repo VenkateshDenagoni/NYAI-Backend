@@ -7,29 +7,40 @@ import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 import uuid
+import logging
 
 from src.utils.logger import logger
 
-# Download NLTK resources if not already present
+# Initialize logger
+logger = logging.getLogger("nyai.rag_utils")
+
+# Try to import NLTK components with fallbacks
 try:
-    nltk.data.find('tokenizers/punkt')
-    nltk.data.find('corpora/stopwords')
-except LookupError:
+    import nltk
+    from nltk.tokenize import word_tokenize
+    from nltk.corpus import stopwords
+    
+    NLTK_AVAILABLE = True
+    
+    # Try to get stopwords - if they're not downloaded, use an empty set
     try:
-        # More explicit downloads with proper error handling
-        logger.info("Downloading NLTK resources...")
-        nltk_data_path = Path.home() / "nltk_data"
-        nltk_data_path.mkdir(parents=True, exist_ok=True)
+        STOPWORDS = set(stopwords.words('english'))
+    except LookupError:
+        logger.warning("NLTK stopwords not found, using empty stopwords set")
+        STOPWORDS = set()
         
-        nltk.download('punkt', download_dir=str(nltk_data_path), quiet=False)
-        nltk.download('stopwords', download_dir=str(nltk_data_path), quiet=False)
-        
-        # Verify downloads were successful
-        nltk.data.find('tokenizers/punkt')
-        nltk.data.find('corpora/stopwords')
-        logger.info("NLTK resources downloaded successfully")
-    except Exception as e:
-        logger.error(f"Could not download NLTK resources: {e}. Falling back to basic tokenization.")
+except ImportError:
+    # NLTK not available, create fallback functions
+    NLTK_AVAILABLE = False
+    STOPWORDS = set()
+    
+    def word_tokenize(text: str) -> List[str]:
+        """Simple fallback for NLTK word_tokenize."""
+        # Basic whitespace and punctuation splitting
+        text = re.sub(r'[^\w\s]', ' ', text)
+        return [word for word in text.split() if word]
+    
+    logger.warning("NLTK import failed, using fallback tokenization functions")
 
 def clean_text(text: str) -> str:
     """Clean and normalize text for better embedding quality."""
@@ -258,7 +269,7 @@ def expand_query(query: str) -> str:
     if new_tokens:
         expanded_query += " " + " ".join(new_tokens)
     
-        return expanded_query
+    return expanded_query
 
 def detect_document_type(df: pd.DataFrame) -> str:
     """Detect the type of legal document based on column structure.

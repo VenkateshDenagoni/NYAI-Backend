@@ -20,6 +20,15 @@ from src.utils.errors import register_error_handlers
 from src.middleware import request_middleware
 from src.config import config
 from src.utils.logger import logger
+from src.utils.nltk_setup import download_nltk_data
+
+# Initialize NLTK
+logger.info("Setting up NLTK data...")
+nltk_setup_success = download_nltk_data()
+if nltk_setup_success:
+    logger.info("NLTK setup completed successfully")
+else:
+    logger.warning("NLTK setup encountered issues - some NLP features may not work correctly")
 
 # Initialize extensions
 db = SQLAlchemy()
@@ -125,6 +134,9 @@ def create_app():
         except Exception as e:
             rag_status = f"error: {str(e)}"
         
+        # Check NLTK status
+        nltk_status = "healthy" if nltk_setup_success else "limited functionality"
+        
         return {
             "status": "healthy",
             "dependencies": {
@@ -132,7 +144,8 @@ def create_app():
                 "redis": redis_status,
                 "chromadb": chroma_status,
                 "embedding_function": embedding_status,
-                "rag_service": rag_status
+                "rag_service": rag_status,
+                "nltk": nltk_status
             },
             "version": config.VERSION
         }
