@@ -71,6 +71,10 @@ class BaseConfig:
     # Prompt template paths
     PROMPT_TEMPLATES_DIR = Path(__file__).parent / "prompts"
     
+    # Ensure prompt templates directory exists
+    if not PROMPT_TEMPLATES_DIR.exists():
+        PROMPT_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+    
     # Feature flags
     ENABLE_CONTENT_SAFETY = True
     
@@ -128,4 +132,4 @@ def get_config():
     return configs.get(env, DevelopmentConfig)
 
 # Export the active configuration
-config = get_config() 
+config = get_config()

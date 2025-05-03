@@ -15,7 +15,7 @@ try:
 except ImportError:
     prometheus_available = False
 
-from src.routes.ai_routes import ai_routes
+from src.routes.rag_routes import rag_routes
 from src.utils.errors import register_error_handlers
 from src.middleware import request_middleware
 from src.config import config
@@ -32,9 +32,19 @@ try:
         socket_connect_timeout=1
     )
     redis_client.ping()
-except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError):
+    logger.info("Redis connection successful")
+except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
     redis_available = False
-    logger.warning("Redis is not available. Using fallback in-memory storage.")
+    logger.warning(f"Redis connection failed: {str(e)}")
+    logger.warning("Using fallback in-memory storage for caching and session management.")
+    logger.warning("To enable Redis (recommended for production):")
+    logger.warning("1. Install Redis server: https://redis.io/docs/getting-started/")
+    logger.warning("2. Start Redis server: 'redis-server'")
+    logger.warning("3. Verify Redis is running: 'redis-cli ping' should return 'PONG'")
+except Exception as e:
+    redis_available = False
+    logger.error(f"Unexpected Redis error: {str(e)}")
+    logger.warning("Using fallback in-memory storage for caching and session management.")
 
 # Configure caching based on Redis availability
 if redis_available:
@@ -85,12 +95,47 @@ def create_app():
     request_middleware()(app)
     
     # Register blueprints
-    app.register_blueprint(ai_routes, url_prefix="/api")
+    app.register_blueprint(rag_routes)  # RAG routes already have /api/rag prefix
     
     # Add health check endpoint
     @app.route("/health")
     def health_check():
-        return {"status": "healthy"}
+        # Check database connection
+        db_status = "healthy"
+        try:
+            db.session.execute("SELECT 1")
+        except Exception as e:
+            db_status = f"error: {str(e)}"
+        
+        # Check Redis status
+        redis_status = "healthy" if redis_available else "unavailable (using fallback)"
+        
+        # Check ChromaDB status from document service
+        from src.services.document_service import document_service
+        chroma_status = "healthy" if document_service.chroma_client else "unavailable (using keyword search only)"
+        
+        # Check embedding function status
+        embedding_status = "healthy" if document_service.embedding_function else "unavailable (vector search disabled)"
+        
+        # Check RAG service status
+        try:
+            from src.services.rag_document_service_improved import rag_document_service
+            from src.services.rag_ai_service_improved import rag_ai_service
+            rag_status = "healthy" if rag_document_service and rag_ai_service else "unavailable"
+        except Exception as e:
+            rag_status = f"error: {str(e)}"
+        
+        return {
+            "status": "healthy",
+            "dependencies": {
+                "database": db_status,
+                "redis": redis_status,
+                "chromadb": chroma_status,
+                "embedding_function": embedding_status,
+                "rag_service": rag_status
+            },
+            "version": config.VERSION
+        }
     
     # Add metrics endpoint if prometheus is available
     if prometheus_available:

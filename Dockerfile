@@ -4,7 +4,7 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     NYAI_ENV=production \
-    GUNICORN_CMD_ARGS="--workers=8 --threads=4 --timeout=60 --worker-class=gthread --max-requests=1000 --max-requests-jitter=50"
+    GUNICORN_CMD_ARGS="--workers=4 --threads=2 --timeout=60 --worker-class=gthread --max-requests=1000 --max-requests-jitter=50"
 
 # Set working directory
 WORKDIR /app
@@ -13,6 +13,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -28,10 +29,14 @@ USER nyai
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
-# Run the application with Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "src.app:app"]
+# Run script that handles PORT environment variable
+COPY --chown=nyai:nyai ./start.sh .
+RUN chmod +x ./start.sh
 
-# Expose port
+# Use start script to handle PORT environment variable
+CMD ["./start.sh"]
+
+# Default port (Railway will override this with their PORT env var)
 EXPOSE 8080 

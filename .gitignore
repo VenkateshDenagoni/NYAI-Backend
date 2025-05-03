@@ -1,9 +1,10 @@
-# Python
+# Python general
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
 build/
 develop-eggs/
 dist/
@@ -15,47 +16,64 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual environments
 venv/
-env/
-.venv/
 ENV/
+env/
 
-# IDE
+# Logs and databases
+*.log
+*.sqlite
+*.db
+instance/
+logs/
+db/chroma/
+db/chroma_rag/
+
+# Flask session
+flask_session/
+
+# IDE specific files
 .idea/
 .vscode/
 *.swp
 *.swo
 .DS_Store
 
-# Logs
-*.log
-logs/
+# Environment files
+.env
+.env.*
+.env.production
+!.env.example
 
-# Database
-*.sqlite
-*.db
-instance/
+# Jupyter Notebooks
+*.ipynb
+.ipynb_checkpoints
 
-# Session files
-flask_session/
+# Miscellaneous
+debug_system_prompt.txt
+results.csv
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Large model files or embeddings
+*.bin
+*.pt
+*.h5
+
+# Keep knowledge base directory but ignore large temporary files
+knowledge_base/*.tmp
 
 # Submodules
 IndicTransToolkit/
 
-# Environment variables
-.env
-.env.*
-!.env.example
-
 # Docker
 .dockerignore
-Dockerfile
 docker-compose.yml
 
 # Testing
