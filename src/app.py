@@ -8,6 +8,8 @@ from flask_limiter.util import get_remote_address
 import redis
 import logging
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
+import gc
+import os
 
 try:
     from prometheus_client import make_wsgi_app
@@ -159,6 +161,12 @@ def create_app():
     # Create database tables
     with app.app_context():
         db.create_all()
+    
+    # Memory optimization for Railway
+    if os.environ.get("RAILWAY_SERVICE_ID"):
+        # Force garbage collection after initialization to free memory
+        gc.collect()
+        app.logger.info("Forced garbage collection for Railway deployment")
     
     return app
 

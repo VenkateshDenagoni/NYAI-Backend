@@ -4,7 +4,8 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     NYAI_ENV=production \
-    GUNICORN_CMD_ARGS="--workers=4 --threads=2 --timeout=60 --worker-class=gthread --max-requests=1000 --max-requests-jitter=50"
+    # More conservative default Gunicorn settings for better memory usage
+    GUNICORN_CMD_ARGS="--workers=3 --threads=2 --timeout=60 --worker-class=gthread --max-requests=800 --max-requests-jitter=50"
 
 # Set working directory
 WORKDIR /app

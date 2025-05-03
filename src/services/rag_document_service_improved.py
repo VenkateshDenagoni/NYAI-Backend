@@ -285,92 +285,113 @@ class RAGDocumentService:
                     # Take the top 1-2 columns
                     text_cols = [col for col, _ in sorted_cols[:2]]
             
-            # Process each row
-            for index, row in df.iterrows():
-                # Combined text from text columns
-                text_parts = []
-                for col in text_cols:
-                    if col in row and pd.notna(row[col]) and row[col]:
-                        text_parts.append(str(row[col]))
+            # Use batch processing to reduce memory usage while maintaining functionality
+            batch_size = 200  # Process 200 rows at a time to maintain performance while reducing memory peaks
+            total_rows = len(df)
+            for batch_start in range(0, total_rows, batch_size):
+                batch_end = min(batch_start + batch_size, total_rows)
+                batch_df = df.iloc[batch_start:batch_end]
                 
-                if not text_parts:
-                    # Skip rows with no text
-                    continue
-                
-                # Combined text
-                combined_text = " ".join(text_parts)
-                
-                # For IPC sections, add extra context from other columns
-                if document_type == 'ipc':
-                    context_parts = []
-                    for col, val in row.items():
-                        if col not in text_cols and pd.notna(val) and val:
-                            # Only add substantive fields with real content
-                            if len(str(val)) > 2 and col.lower() not in ['id', 'index', 'uuid']:
-                                context_parts.append(f"{col}: {val}")
+                # Process each row in the batch
+                for index, row in batch_df.iterrows():
+                    # Combined text from text columns
+                    text_parts = []
+                    for col in text_cols:
+                        if col in row and pd.notna(row[col]) and row[col]:
+                            text_parts.append(str(row[col]))
                     
-                    # Add context before the main text
-                    if context_parts:
-                        combined_text = "\n".join(context_parts) + "\n\n" + combined_text
+                    if not text_parts:
+                        # Skip rows with no text
+                        continue
+                    
+                    # Combined text
+                    combined_text = " ".join(text_parts)
+                    
+                    # For IPC sections, add extra context from other columns
+                    if document_type == 'ipc':
+                        context_parts = []
+                        for col, val in row.items():
+                            if col not in text_cols and pd.notna(val) and val:
+                                # Only add substantive fields with real content
+                                if len(str(val)) > 2 and col.lower() not in ['id', 'index', 'uuid']:
+                                    context_parts.append(f"{col}: {val}")
+                        
+                        # Add context before the main text
+                        if context_parts:
+                            combined_text = "\n".join(context_parts) + "\n\n" + combined_text
+                    
+                    # Extract legal metadata
+                    metadata = extract_legal_metadata(row, document_type)
+                    metadata['source'] = source_name
+                    metadata['document_type'] = document_type
+                    
+                    # Chunk text according to document type
+                    chunks = enhanced_chunk_text(combined_text, document_type)
+                    
+                    if len(chunks) == 0:
+                        # Force at least one chunk with cleaned text
+                        chunks = [clean_text(combined_text)]
                 
-                # Extract legal metadata
-                metadata = extract_legal_metadata(row, document_type)
-                metadata['source'] = source_name
-                metadata['document_type'] = document_type
+                    # Process each chunk
+                    for i, chunk in enumerate(chunks):
+                        # Create unique document ID
+                        doc_id = f"{source_name}_{index}_{i}"
+                    
+                        # Add chunk metadata
+                        chunk_metadata = {
+                            **metadata,
+                            "chunk_index": i,
+                            "total_chunks": len(chunks)
+                        }
+                    
+                        # Store in document dict
+                        self.documents[doc_id] = {
+                            "content": chunk,
+                            "metadata": chunk_metadata,
+                            "id": doc_id
+                        }
+                        
+                        # Add enhanced text for vector embedding
+                        enhanced_text = enhance_text_for_embedding(chunk, document_type, chunk_metadata)
+                        
+                        # Prepare for vector batch insertion
+                        if self.documents_collection:
+                            ids.append(doc_id)
+                            texts.append(enhanced_text)  # Use enhanced text for embeddings
+                            metadata_list.append(chunk_metadata)
                 
-                # Chunk text according to document type
-                chunks = enhanced_chunk_text(combined_text, document_type)
-                
-                if len(chunks) == 0:
-                    # Force at least one chunk with cleaned text
-                    chunks = [clean_text(combined_text)]
+                # Periodically add vectors to save memory - add batch to ChromaDB
+                if self.documents_collection and texts and (batch_end == total_rows or len(texts) >= 100):
+                    try:
+                        self.documents_collection.add(
+                            ids=ids,
+                            documents=texts,
+                            metadatas=metadata_list
+                        )
+                        logger.info(f"Added {len(texts)} vectors to RAG ChromaDB (batch {batch_start+1}-{batch_end} of {total_rows})")
+                        # Clear lists to free memory
+                        ids = []
+                        texts = []
+                        metadata_list = []
+                    except Exception as e:
+                        logger.error(f"Error adding vectors batch to RAG ChromaDB: {e}")
             
-            # Process each chunk
-            for i, chunk in enumerate(chunks):
-                # Create unique document ID
-                doc_id = f"{source_name}_{index}_{i}"
-            
-                # Add chunk metadata
-                chunk_metadata = {
-                    **metadata,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks)
-                }
-            
-                # Store in document dict
-                self.documents[doc_id] = {
-                    "content": chunk,
-                    "metadata": chunk_metadata,
-                    "id": doc_id
-                }
-                
-                # Add enhanced text for vector embedding
-                enhanced_text = enhance_text_for_embedding(chunk, document_type, chunk_metadata)
-                
-                # Prepare for vector batch insertion
-                if self.documents_collection:
-                    ids.append(doc_id)
-                    texts.append(enhanced_text)  # Use enhanced text for embeddings
-                    metadata_list.append(chunk_metadata)
-            
-            # Cross-reference documents
-            self.documents = {doc_id: doc for doc_id, doc in create_cross_references(list(self.documents.values())).items()}
-            
-            # Add vectors to ChromaDB if available
+            # Process any remaining vectors if batch processing didn't add all
             if self.documents_collection and texts:
                 try:
-                    # Add documents to ChromaDB in batches to avoid memory issues
-                    batch_size = 100
-                    for i in range(0, len(texts), batch_size):
-                        batch_end = min(i + batch_size, len(texts))
-                        self.documents_collection.add(
-                            ids=ids[i:batch_end],
-                            documents=texts[i:batch_end],  # Use enhanced text for embeddings
-                            metadatas=metadata_list[i:batch_end]
-                        )
+                    self.documents_collection.add(
+                        ids=ids,
+                        documents=texts,
+                        metadatas=metadata_list
+                    )
                     logger.info(f"Added {len(texts)} vectors to RAG ChromaDB collection for {source_name}")
                 except Exception as e:
                     logger.error(f"Error adding vectors to RAG ChromaDB: {e}")
+            
+            # Cross-reference documents
+            logger.info(f"Creating cross-references for {len(self.documents)} documents")
+            self.documents = {doc_id: doc for doc_id, doc in create_cross_references(list(self.documents.values())).items()}
+            
         except Exception as e:
             logger.error(f"Error processing document {source_name}: {e}")
     

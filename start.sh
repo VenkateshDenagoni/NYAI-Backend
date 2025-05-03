@@ -14,6 +14,11 @@ if [ -n "$RAILWAY_STATIC_URL" ] || [ -n "$RAILWAY_SERVICE_ID" ] || [ -n "$RAILWA
   # Force console-only logging in Railway (avoid file permission issues)
   export LOG_TO_CONSOLE=true
   
+  # Optimize for Railway's memory constraints
+  # Reduce worker count but maintain functionality
+  export GUNICORN_CMD_ARGS="--workers=2 --threads=2 --timeout=90 --max-requests=500 --max-requests-jitter=50 --worker-class=gthread"
+  echo "Optimized worker configuration for Railway environment"
+  
   # Check NLTK data access
   if [ -d "/app/nltk_data" ]; then
     echo "NLTK data directory exists at /app/nltk_data"
