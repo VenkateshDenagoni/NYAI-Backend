@@ -13,16 +13,7 @@ class BaseConfig:
     APP_NAME = "NYAI Legal Assistant"
     VERSION = "1.0.0"
     
-    # Database settings
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///nyai.db")
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_size": 20,
-        "max_overflow": 10,
-        "pool_timeout": 30,
-        "pool_recycle": 1800,
-        "pool_pre_ping": True
-    }
+    # Database settings removed
     
     # Redis settings for caching and rate limiting
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -91,15 +82,7 @@ class ProductionConfig(BaseConfig):
     LOG_LEVEL = logging.WARNING
     AUTH_REQUIRED = True
     
-    # Production database settings
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_size": 50,
-        "max_overflow": 20,
-        "pool_timeout": 30,
-        "pool_recycle": 1800,
-        "pool_pre_ping": True
-    }
+    # Production database settings removed
     
     # Production Redis settings
     REDIS_URL = os.getenv("REDIS_URL")

@@ -1,6 +1,5 @@
 from flask import Flask
 from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
 from flask_session import Session
 from flask_caching import Cache
 from flask_limiter import Limiter
@@ -33,7 +32,6 @@ else:
     logger.warning("NLTK setup encountered issues - some NLP features may not work correctly")
 
 # Initialize extensions
-db = SQLAlchemy()
 
 # Check Redis availability
 redis_available = True
@@ -94,7 +92,6 @@ def create_app():
     
     # Initialize extensions
     CORS(app)
-    db.init_app(app)
     cache.init_app(app)
     session.init_app(app)
     limiter.init_app(app)
@@ -111,12 +108,7 @@ def create_app():
     # Add health check endpoint
     @app.route("/health")
     def health_check():
-        # Check database connection
-        db_status = "healthy"
-        try:
-            db.session.execute("SELECT 1")
-        except Exception as e:
-            db_status = f"error: {str(e)}"
+        # Removed database health check
         
         # Check Redis status
         redis_status = "healthy" if redis_available else "unavailable (using fallback)"
@@ -142,7 +134,6 @@ def create_app():
         return {
             "status": "healthy",
             "dependencies": {
-                "database": db_status,
                 "redis": redis_status,
                 "chromadb": chroma_status,
                 "embedding_function": embedding_status,
@@ -157,10 +148,6 @@ def create_app():
         app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {
             '/metrics': make_wsgi_app()
         })
-    
-    # Create database tables
-    with app.app_context():
-        db.create_all()
     
     # Memory optimization for Railway
     if os.environ.get("RAILWAY_SERVICE_ID"):
