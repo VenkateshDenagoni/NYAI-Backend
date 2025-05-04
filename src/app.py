@@ -9,6 +9,7 @@ import logging
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 import gc
 import os
+from pathlib import Path
 
 try:
     from prometheus_client import make_wsgi_app
@@ -89,6 +90,13 @@ def create_app():
     if not redis_available:
         app.config['CACHE_TYPE'] = 'SimpleCache'
         app.config['SESSION_TYPE'] = 'filesystem'
+        
+        # Set session file directory to a writable location (tmp directory)
+        # This solves the permission error when running in Docker as non-root user
+        tmp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'instance', 'sessions')
+        os.makedirs(tmp_dir, exist_ok=True)
+        app.config['SESSION_FILE_DIR'] = tmp_dir
+        logger.info(f"Using filesystem sessions in directory: {tmp_dir}")
     
     # Initialize extensions
     CORS(app)
