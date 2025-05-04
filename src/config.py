@@ -13,15 +13,8 @@ class BaseConfig:
     APP_NAME = "NYAI Legal Assistant"
     VERSION = "1.0.0"
     
-    # Database settings removed
-    
-    # Redis settings for caching and rate limiting
-    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    REDIS_MAX_CONNECTIONS = 100
-    
     # Cache settings
-    CACHE_TYPE = "redis"
-    CACHE_REDIS_URL = REDIS_URL
+    CACHE_TYPE = "SimpleCache"
     CACHE_DEFAULT_TIMEOUT = 3600  # 1 hour
     
     # Rate limiting
@@ -29,11 +22,8 @@ class BaseConfig:
     RATE_LIMIT_WINDOW = 60  # seconds
     MAX_REQUESTS_PER_WINDOW = 100  # Increased for production
     
-    # Session settings
-    SESSION_TYPE = "redis"
-    SESSION_REDIS = REDIS_URL
-    SESSION_PERMANENT = True
-    PERMANENT_SESSION_LIFETIME = 3600  # 1 hour
+    # Session settings - Disable sessions
+    SESSION_TYPE = "null"
     
     # Load balancing
     WORKER_COUNT = 4
@@ -82,20 +72,12 @@ class ProductionConfig(BaseConfig):
     LOG_LEVEL = logging.WARNING
     AUTH_REQUIRED = True
     
-    # Production database settings removed
-    
-    # Production Redis settings
-    REDIS_URL = os.getenv("REDIS_URL")
-    REDIS_MAX_CONNECTIONS = 200
-    
     # Production worker settings
     WORKER_COUNT = 8
     THREADS_PER_WORKER = 4
     
     # Production rate limiting
     MAX_REQUESTS_PER_WINDOW = 200  # Higher limit for production
-    
-    # ... rest of existing config ...
 
 class TestingConfig(BaseConfig):
     """Testing configuration."""

@@ -1,10 +1,8 @@
 from flask import Flask
 from flask_cors import CORS
-from flask_session import Session
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-import redis
 import logging
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 import gc
@@ -32,52 +30,15 @@ if nltk_setup_success:
 else:
     logger.warning("NLTK setup encountered issues - some NLP features may not work correctly")
 
-# Initialize extensions
+# Initialize simple in-memory cache
+cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
 
-# Check Redis availability
-redis_available = True
-try:
-    redis_client = redis.Redis.from_url(
-        config.REDIS_URL, 
-        socket_connect_timeout=1
-    )
-    redis_client.ping()
-    logger.info("Redis connection successful")
-except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
-    redis_available = False
-    logger.warning(f"Redis connection failed: {str(e)}")
-    logger.warning("Using fallback in-memory storage for caching and session management.")
-    logger.warning("To enable Redis (recommended for production):")
-    logger.warning("1. Install Redis server: https://redis.io/docs/getting-started/")
-    logger.warning("2. Start Redis server: 'redis-server'")
-    logger.warning("3. Verify Redis is running: 'redis-cli ping' should return 'PONG'")
-except Exception as e:
-    redis_available = False
-    logger.error(f"Unexpected Redis error: {str(e)}")
-    logger.warning("Using fallback in-memory storage for caching and session management.")
-
-# Configure caching based on Redis availability
-if redis_available:
-    cache = Cache()
-else:
-    cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
-
-# Configure session based on Redis availability
-session = Session()
-
-# Configure rate limiter based on Redis availability
-if redis_available:
-    limiter = Limiter(
-        key_func=get_remote_address,
-        default_limits=["200 per minute"],
-        storage_uri=config.REDIS_URL
-    )
-else:
-    limiter = Limiter(
-        key_func=get_remote_address,
-        default_limits=["200 per minute"],
-        storage_uri="memory://"
-    )
+# Configure rate limiter with memory storage
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["200 per minute"],
+    storage_uri="memory://"
+)
 
 def create_app():
     """Create and configure the Flask application."""
@@ -86,22 +47,13 @@ def create_app():
     # Load configuration
     app.config.from_object(config)
     
-    # Override Redis-dependent settings if Redis is unavailable
-    if not redis_available:
-        app.config['CACHE_TYPE'] = 'SimpleCache'
-        app.config['SESSION_TYPE'] = 'filesystem'
-        
-        # Set session file directory to a writable location (tmp directory)
-        # This solves the permission error when running in Docker as non-root user
-        tmp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'instance', 'sessions')
-        os.makedirs(tmp_dir, exist_ok=True)
-        app.config['SESSION_FILE_DIR'] = tmp_dir
-        logger.info(f"Using filesystem sessions in directory: {tmp_dir}")
+    # Use in-memory implementations instead of Redis
+    app.config['CACHE_TYPE'] = 'SimpleCache'
+    app.config['SESSION_TYPE'] = 'null'  # Disable sessions completely
     
     # Initialize extensions
     CORS(app)
     cache.init_app(app)
-    session.init_app(app)
     limiter.init_app(app)
     
     # Register error handlers
@@ -116,11 +68,6 @@ def create_app():
     # Add health check endpoint
     @app.route("/health")
     def health_check():
-        # Removed database health check
-        
-        # Check Redis status
-        redis_status = "healthy" if redis_available else "unavailable (using fallback)"
-        
         # Check ChromaDB status from document service
         from src.services.document_service import document_service
         chroma_status = "healthy" if document_service.chroma_client else "unavailable (using keyword search only)"
@@ -142,7 +89,6 @@ def create_app():
         return {
             "status": "healthy",
             "dependencies": {
-                "redis": redis_status,
                 "chromadb": chroma_status,
                 "embedding_function": embedding_status,
                 "rag_service": rag_status,

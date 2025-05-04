@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, g, session, Response, stream_with_context
+from flask import Blueprint, request, jsonify, g, Response, stream_with_context
 import uuid
 import time
 import json

@@ -1,22 +1,13 @@
 import time
 from functools import wraps
 from flask import request, g, jsonify, current_app
-import redis
 from werkzeug.exceptions import TooManyRequests
 
 from src.config import config
 from src.utils.logger import logger, generate_request_id
 
-# Setup Redis connection for rate limiting (will connect lazily)
-rate_limit_redis = None
-if config.RATE_LIMIT_ENABLED:
-    try:
-        import redis
-        # Using redis to track rate limits (connection string would be in env vars in production)
-        rate_limit_redis = redis.Redis(host='localhost', port=6379, db=0, socket_connect_timeout=1)
-    except (ImportError, redis.exceptions.ConnectionError):
-        logger.warning("Redis not available. Rate limiting will use in-memory storage (not suitable for multiple instances).")
-        rate_limit_store = {}
+# In-memory store for rate limiting
+rate_limit_store = {}
 
 # Request tracking middleware
 def request_middleware():
@@ -61,7 +52,7 @@ def request_middleware():
     
     return decorator
 
-# Rate limiting decorator
+# Rate limiting decorator using simple in-memory implementation
 def rate_limit(limit=None, window=None):
     """Rate limiting decorator for API endpoints."""
     def decorator(f):
@@ -77,47 +68,26 @@ def rate_limit(limit=None, window=None):
             # Get client identifier (IP + route)
             client_id = f"{request.remote_addr}:{request.path}"
             
-            # Check rate limit using Redis if available
-            if rate_limit_redis:
-                try:
-                    current = rate_limit_redis.get(client_id)
-                    if current is not None and int(current) >= rate_limit:
-                        logger.warning(f"Rate limit exceeded for {client_id}")
-                        response = jsonify({
-                            "error": "Rate limit exceeded",
-                            "retry_after": time_window
-                        })
-                        response.headers['Retry-After'] = time_window
-                        return response, 429
-                    
-                    # Increment counter
-                    pipe = rate_limit_redis.pipeline()
-                    pipe.incr(client_id)
-                    pipe.expire(client_id, time_window)
-                    pipe.execute()
-                except redis.exceptions.RedisError:
-                    logger.error("Redis error during rate limiting")
-            else:
-                # Fallback to in-memory rate limiting
-                now = time.time()
-                key = f"{client_id}:{int(now / time_window)}"
-                
-                if key in rate_limit_store and rate_limit_store[key] >= rate_limit:
-                    logger.warning(f"Rate limit exceeded for {client_id}")
-                    response = jsonify({
-                        "error": "Rate limit exceeded",
-                        "retry_after": time_window
-                    })
-                    response.headers['Retry-After'] = time_window
-                    return response, 429
-                
-                # Clean up old entries
-                for k in list(rate_limit_store.keys()):
-                    if int(now / time_window) > int(k.split(':')[-1]):
-                        rate_limit_store.pop(k, None)
-                
-                # Increment counter
-                rate_limit_store[key] = rate_limit_store.get(key, 0) + 1
+            # Simple in-memory rate limiting
+            now = time.time()
+            key = f"{client_id}:{int(now / time_window)}"
+            
+            if key in rate_limit_store and rate_limit_store[key] >= rate_limit:
+                logger.warning(f"Rate limit exceeded for {client_id}")
+                response = jsonify({
+                    "error": "Rate limit exceeded",
+                    "retry_after": time_window
+                })
+                response.headers['Retry-After'] = time_window
+                return response, 429
+            
+            # Clean up old entries
+            for k in list(rate_limit_store.keys()):
+                if int(now / time_window) > int(k.split(':')[-1]):
+                    rate_limit_store.pop(k, None)
+            
+            # Increment counter
+            rate_limit_store[key] = rate_limit_store.get(key, 0) + 1
             
             return f(*args, **kwargs)
         return wrapped
