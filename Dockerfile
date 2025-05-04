@@ -40,10 +40,6 @@ RUN chown -R 1000:1000 /app/db /app/logs /app/instance \
     && adduser --disabled-password --gecos "" --uid 1000 nyai
 USER nyai
 
-# Simple health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=90s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
-
 # Default port
 EXPOSE 8080
 
