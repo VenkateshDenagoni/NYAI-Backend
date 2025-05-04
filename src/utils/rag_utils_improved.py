@@ -11,33 +11,17 @@ from src.utils.logger import logger
 # Initialize logger
 logger = logging.getLogger("nyai.rag_utils")
 
-# Try to import NLTK components with fallbacks
-try:
-    import nltk
-    from nltk.tokenize import word_tokenize
-    from nltk.corpus import stopwords
-    
-    NLTK_AVAILABLE = True
-    
-    # Try to get stopwords - if they're not downloaded, use an empty set
-    try:
-        STOPWORDS = set(stopwords.words('english'))
-    except LookupError:
-        logger.warning("NLTK stopwords not found, using empty stopwords set")
-        STOPWORDS = set()
-        
-except ImportError:
-    # NLTK not available, create fallback functions
-    NLTK_AVAILABLE = False
-    STOPWORDS = set()
-    
-    def word_tokenize(text: str) -> List[str]:
-        """Simple fallback for NLTK word_tokenize."""
-        # Basic whitespace and punctuation splitting
-        text = re.sub(r'[^\w\s]', ' ', text)
-        return [word for word in text.split() if word]
-    
-    logger.warning("NLTK import failed, using fallback tokenization functions")
+# NLTK is not available, create fallback functions
+NLTK_AVAILABLE = False
+STOPWORDS = set()
+
+def word_tokenize(text: str) -> List[str]:
+    """Simple fallback for NLTK word_tokenize."""
+    # Basic whitespace and punctuation splitting
+    text = re.sub(r'[^\w\s]', ' ', text)
+    return [word for word in text.split() if word]
+
+logger.info("Using simple tokenization functions without NLTK")
 
 # Try to import dimensionality reduction components with fallbacks
 try:

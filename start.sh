@@ -31,16 +31,5 @@ if [ -n "$RAILWAY_STATIC_URL" ] || [ -n "$RAILWAY_SERVICE_ID" ] || [ -n "$RAILWA
   # export USE_CHROMADB=false
 fi
 
-# Check if NLTK data is available, download if missing
-python -c "
-import nltk
-try:
-    nltk.data.find('tokenizers/punkt')
-    print('NLTK data already downloaded')
-except LookupError:
-    print('Downloading NLTK data...')
-    nltk.download('punkt')
-"
-
 # Run the Gunicorn server, binding to the specified port
 exec gunicorn --bind "0.0.0.0:$PORT" "src.app:app" 
