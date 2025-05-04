@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Download NLTK data
+RUN python -m nltk.downloader punkt
+
 # Create and configure directories for the non-root user
 RUN mkdir -p /app/logs /app/instance /app/instance/sessions \
     && chmod -R 777 /app/logs /app/instance /app/instance/sessions \

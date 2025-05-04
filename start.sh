@@ -16,12 +16,31 @@ if [ -n "$RAILWAY_STATIC_URL" ] || [ -n "$RAILWAY_SERVICE_ID" ] || [ -n "$RAILWA
   
   # Optimize for Railway's memory constraints
   # Reduce worker count but maintain functionality
-  export GUNICORN_CMD_ARGS="--workers=2 --threads=2 --timeout=90 --max-requests=500 --max-requests-jitter=50 --worker-class=gthread"
+  export GUNICORN_CMD_ARGS="--workers=1 --threads=2 --timeout=90 --max-requests=300 --max-requests-jitter=50 --worker-class=gthread"
   echo "Optimized worker configuration for Railway environment"
   
   # Set a very high error threshold for ChromaDB to prevent failures
   export CHROMA_ERROR_THRESHOLD=100
+  
+  # Force garbage collection to free memory
+  echo "Running initial garbage collection"
+  python -c "import gc; gc.collect()"
+  
+  # Disable ChromaDB if needed to save memory
+  # Uncomment if your app crashes due to memory issues
+  # export USE_CHROMADB=false
 fi
+
+# Check if NLTK data is available, download if missing
+python -c "
+import nltk
+try:
+    nltk.data.find('tokenizers/punkt')
+    print('NLTK data already downloaded')
+except LookupError:
+    print('Downloading NLTK data...')
+    nltk.download('punkt')
+"
 
 # Run the Gunicorn server, binding to the specified port
 exec gunicorn --bind "0.0.0.0:$PORT" "src.app:app" 
