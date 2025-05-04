@@ -32,24 +32,17 @@ class RAGDocumentService:
         self.cache_ttl = 3600  # 1 hour cache TTL
         self.last_cache_cleanup = datetime.now()
         
-        # Initialize embedding function with a more powerful model
+        # Initialize embedding function with a more memory-efficient model
         try:
-            # Use mpnet model for better semantic understanding of legal text
-            # This model has 768 dimensions vs 384 in MiniLM-L6-v2
+            # Use MiniLM model instead of mpnet for memory efficiency
+            # This model has 384 dimensions vs 768 in mpnet, using ~50% less memory
+            # while still maintaining good performance for legal text
             self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name="all-mpnet-base-v2"
+                model_name="all-MiniLM-L6-v2"
             )
-            logger.info("RAG embedding function initialized with all-mpnet-base-v2 model")
+            logger.info("RAG embedding function initialized with all-MiniLM-L6-v2 model (memory-optimized)")
         except Exception as e:
             logger.error(f"Error initializing RAG embedding function: {e}")
-            # Fallback to smaller model if the main one fails
-            try:
-                self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-                    model_name="all-MiniLM-L6-v2"
-                )
-                logger.warning("Fallback to smaller embedding model (all-MiniLM-L6-v2)")
-            except Exception as e2:
-                logger.error(f"Error initializing fallback embedding function: {e2}")
             logger.warning("Vector search will not be available for RAG")
             self.embedding_function = None
         
