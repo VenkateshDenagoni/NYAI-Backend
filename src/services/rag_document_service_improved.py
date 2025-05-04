@@ -12,13 +12,17 @@ from chromadb.utils import embedding_functions
 import uuid
 from tenacity import retry, stop_after_attempt, wait_exponential
 import math
-import nltk
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
+import time
+from collections import defaultdict
 
 from src.config import config
 from src.utils.logger import logger
-from src.utils.rag_utils_improved import clean_text, chunk_text, expand_query, detect_document_type, enhanced_chunk_text, extract_legal_metadata, create_cross_references, normalize_legal_text, enhance_text_for_embedding
+from src.utils.rag_utils_improved import (
+    clean_text, chunk_text, expand_query, detect_document_type, 
+    enhanced_chunk_text, extract_legal_metadata, create_cross_references, 
+    normalize_legal_text, enhance_text_for_embedding, word_tokenize,
+    NLTK_AVAILABLE, STOPWORDS, SKLEARN_AVAILABLE
+)
 
 class RAGDocumentService:
     """Service for handling document processing and retrieval for RAG."""
@@ -32,48 +36,80 @@ class RAGDocumentService:
         self.cache_ttl = 3600  # 1 hour cache TTL
         self.last_cache_cleanup = datetime.now()
         
-        # Initialize embedding function with a more memory-efficient model
-        try:
-            # Use MiniLM model instead of mpnet for memory efficiency
-            # This model has 384 dimensions vs 768 in mpnet, using ~50% less memory
-            # while still maintaining good performance for legal text
-            self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name="all-MiniLM-L6-v2"
-            )
-            logger.info("RAG embedding function initialized with all-MiniLM-L6-v2 model (memory-optimized)")
-        except Exception as e:
-            logger.error(f"Error initializing RAG embedding function: {e}")
-            logger.warning("Vector search will not be available for RAG")
-            self.embedding_function = None
+        # Lazy loading - don't initialize embedding function immediately
+        # Create placeholders that will be initialized on first use
+        self._embedding_function = None
+        self._embedding_model_loaded = False
+        self._chroma_client = None
+        self._documents_collection = None
         
-        # Initialize ChromaDB
-        try:
-            db_path = Path(__file__).parent.parent.parent / "db" / "chroma_rag"
-            # Ensure the directory exists
-            db_path.mkdir(parents=True, exist_ok=True)
-            
-            self.chroma_client = chromadb.PersistentClient(
-                path=str(db_path)
-            )
-            
-            # Only create collections if embedding function is available
-            if self.embedding_function:
-                # Create a single collection for all documents
-                self.documents_collection = self._get_or_create_collection("documents")
-                logger.info("RAG ChromaDB collection initialized successfully")
-            else:
-                logger.warning("Skipping RAG ChromaDB collection creation due to missing embedding function")
-                self.documents_collection = None
-            
-            logger.info("RAG ChromaDB initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing RAG ChromaDB: {e}")
-            logger.warning("Falling back to in-memory storage; vector search will not be available for RAG")
-            self.chroma_client = None
-            self.documents_collection = None
+        # Still initialize the database directory path
+        self.db_path = Path(__file__).parent.parent.parent / "db" / "chroma_rag"
+        # Ensure the directory exists
+        self.db_path.mkdir(parents=True, exist_ok=True)
         
         # Load documents
         self._load_documents()
+    
+    @property
+    def embedding_function(self):
+        """Lazy-loaded embedding function property."""
+        if not self._embedding_model_loaded:
+            self._load_embedding_function()
+        return self._embedding_function
+    
+    @property
+    def chroma_client(self):
+        """Lazy-loaded ChromaDB client property."""
+        if self._chroma_client is None:
+            self._initialize_chromadb()
+        return self._chroma_client
+    
+    @property
+    def documents_collection(self):
+        """Lazy-loaded documents collection property."""
+        # Only try to access collection if we have initialized ChromaDB first
+        if self._documents_collection is None and self.chroma_client is not None:
+            self._documents_collection = self._get_or_create_collection("documents")
+        return self._documents_collection
+    
+    def _load_embedding_function(self):
+        """Lazy loading of the embedding function to save memory until needed."""
+        try:
+            start_time = time.time()
+            logger.info("Initializing embedding function (lazy loading)...")
+            
+            # Use MiniLM model instead of mpnet for memory efficiency
+            # This model has 384 dimensions vs 768 in mpnet, using ~50% less memory
+            self._embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="all-MiniLM-L6-v2"
+            )
+            
+            self._embedding_model_loaded = True
+            load_time = time.time() - start_time
+            logger.info(f"RAG embedding function initialized with all-MiniLM-L6-v2 model in {load_time:.2f}s (memory-optimized)")
+        except Exception as e:
+            logger.error(f"Error initializing RAG embedding function: {e}")
+            logger.warning("Vector search will not be available for RAG")
+            self._embedding_function = None
+            self._embedding_model_loaded = True  # Mark as tried to avoid repeated attempts
+    
+    def _initialize_chromadb(self):
+        """Lazy initialization of ChromaDB client."""
+        try:
+            start_time = time.time()
+            logger.info("Initializing ChromaDB client (lazy loading)...")
+            
+            self._chroma_client = chromadb.PersistentClient(
+                path=str(self.db_path)
+            )
+            
+            init_time = time.time() - start_time
+            logger.info(f"RAG ChromaDB initialized successfully in {init_time:.2f}s")
+        except Exception as e:
+            logger.error(f"Error initializing RAG ChromaDB: {e}")
+            logger.warning("Falling back to in-memory storage; vector search will not be available for RAG")
+            self._chroma_client = None
     
     def _get_or_create_collection(self, name: str) -> Any:
         """Get or create a ChromaDB collection."""
@@ -126,15 +162,8 @@ class RAGDocumentService:
                         # Special handling for IPC sections that might have inconsistent formats
                         self._process_ipc_document(file_path)
                     else:
-                        # Standard processing for other files
-                        df = pd.read_csv(file_path)
-                        if df.empty:
-                            logger.warning(f"Empty CSV file: {file_path.name}")
-                            continue
-                        
-                        logger.info(f"Processing {file_path.name} with {len(df)} rows")
-                        self._process_document(df, file_path.stem)
-                        logger.info(f"Loaded {file_path.stem} with {len(df)} entries for RAG")
+                        # Use memory-efficient processing with chunksize
+                        self._process_document_in_chunks(file_path)
                 except Exception as e:
                     logger.error(f"Error processing {file_path}: {e}")
         except Exception as e:
@@ -233,6 +262,61 @@ class RAGDocumentService:
         except Exception as e:
             logger.error(f"Error processing IPC document {file_path}: {e}")
     
+    def _process_document_in_chunks(self, file_path: Path) -> None:
+        """Process a CSV file in chunks to reduce memory usage.
+        
+        Args:
+            file_path: Path to the CSV file
+        """
+        try:
+            # Get file size to estimate appropriate chunk size
+            file_size_mb = file_path.stat().st_size / (1024 * 1024)
+            
+            # Calculate an appropriate chunksize based on file size
+            # For very large files, use smaller chunks
+            if file_size_mb > 100:
+                chunksize = 500  # For huge files
+            elif file_size_mb > 50:
+                chunksize = 1000
+            elif file_size_mb > 10:
+                chunksize = 2000
+            else:
+                chunksize = 5000  # For small files, process larger chunks
+            
+            source_name = file_path.stem
+            logger.info(f"Processing {file_path.name} in chunks of {chunksize} rows")
+            
+            # First check the file structure from a sample
+            sample_df = pd.read_csv(file_path, nrows=5)
+            document_type = detect_document_type(sample_df)
+            
+            # Process file in chunks
+            chunks_processed = 0
+            total_rows = 0
+            
+            # Use chunked reading to process large files efficiently
+            for chunk_df in pd.read_csv(file_path, chunksize=chunksize):
+                if chunk_df.empty:
+                    continue
+                
+                # Process this chunk
+                self._process_document(chunk_df, source_name, document_type)
+                chunks_processed += 1
+                total_rows += len(chunk_df)
+                
+                # Provide progress updates
+                logger.info(f"Processed chunk {chunks_processed} with {len(chunk_df)} rows for {source_name}")
+                
+                # Force garbage collection after processing large chunks
+                if chunks_processed % 5 == 0:
+                    import gc
+                    gc.collect()
+            
+            logger.info(f"Finished loading {source_name} with {total_rows} total rows in {chunks_processed} chunks")
+            
+        except Exception as e:
+            logger.error(f"Error processing document in chunks {file_path}: {e}")
+    
     def _process_document(self, df: pd.DataFrame, source_name: str, force_document_type: str = None) -> None:
         """Process a document dataframe and add it to the document store.
         
@@ -251,6 +335,7 @@ class RAGDocumentService:
             metadata_list = []
             ids = []
             texts = []
+            sample_embeddings = []  # For dimensionality reduction setup
             
             # Find columns containing text data
             potential_text_cols = ['content', 'text', 'description', 'body', 'Content', 'Text', 'Description', 'Body']
@@ -352,10 +437,27 @@ class RAGDocumentService:
                             ids.append(doc_id)
                             texts.append(enhanced_text)  # Use enhanced text for embeddings
                             metadata_list.append(chunk_metadata)
+                            
+                            # Collect sample embeddings for dimensionality reduction (if not already set up)
+                            if len(sample_embeddings) < 200:  # Collect up to 200 samples
+                                # Get the vector embedding from the embedding function directly
+                                try:
+                                    if SKLEARN_AVAILABLE and self.embedding_function:
+                                        embedding = self.embedding_function([enhanced_text])[0]
+                                        if embedding is not None and len(embedding) > 0:
+                                            sample_embeddings.append(embedding)
+                                except Exception as e:
+                                    logger.debug(f"Error getting sample embedding: {e}")
                 
                 # Periodically add vectors to save memory - add batch to ChromaDB
                 if self.documents_collection and texts and (batch_end == total_rows or len(texts) >= 100):
                     try:
+                        # Set up dimensionality reduction if we have enough samples
+                        if sample_embeddings and len(sample_embeddings) >= 20:
+                            from src.utils.rag_utils_improved import setup_dim_reduction
+                            setup_dim_reduction(sample_embeddings, target_dim=100)
+                            sample_embeddings = []  # Clear samples after setup
+                        
                         self.documents_collection.add(
                             ids=ids,
                             documents=texts,
@@ -563,46 +665,30 @@ class RAGDocumentService:
             # Prepare ChromaDB filters in the correct format
             where_filter = None
             if filters:
-                where_conditions = []
-                
-                for key, value in filters.items():
-                    if isinstance(value, list):
-                        # For list values, use $in operator
-                        where_conditions.append({
-                            "$or": [{key: val} for val in value]
-                        })
-                    elif isinstance(value, dict) and ("min" in value or "max" in value):
-                        # For range filters
-                        range_conditions = []
-                        if "min" in value:
-                            range_conditions.append({f"{key}": {"$gte": value["min"]}})
-                        if "max" in value:
-                            range_conditions.append({f"{key}": {"$lte": value["max"]}})
-                        where_conditions.append({"$and": range_conditions})
+                # Format filters to ChromaDB's expected format
+                where_clauses = []
+                for k, v in filters.items():
+                    if isinstance(v, list):
+                        # Handle multi-value filters (using $in operator)
+                        where_clauses.append({k: {"$in": v}})
                     else:
-                        # Simple equality
-                        where_conditions.append({key: value})
+                        # Handle single value filters
+                        where_clauses.append({k: v})
                 
-                # Combine all conditions with $and
-                if where_conditions:
-                    if len(where_conditions) == 1:
-                        where_filter = where_conditions[0]
-                    else:
-                        where_filter = {"$and": where_conditions}
+                # Combine clauses if multiple
+                if len(where_clauses) == 1:
+                    where_filter = where_clauses[0]
+                elif len(where_clauses) > 1:
+                    where_filter = {"$and": where_clauses}
             
-            # Make enhanced limit to increase recall and allow for reranking
-            enhanced_limit = min(limit * 3, 30)  # Get more results but limit to avoid excessive computation
-            
-            logger.debug(f"Executing vector search with query: {enhanced_query[:100]}...")
-            
-            # Perform vector search
+            # Execute the query
             results = self.documents_collection.query(
                 query_texts=[enhanced_query],
-                n_results=enhanced_limit,
+                n_results=min(limit * 3, 25),  # Get more results than needed for better filtering
                 where=where_filter
             )
             
-            # Process results
+            # Process the results
             processed_results = []
             seen_content_hashes = set()  # For deduplication
             
@@ -648,10 +734,9 @@ class RAGDocumentService:
             if processed_results:
                 # Extract query keywords (non-stopwords)
                 try:
-                    stop_words = set(stopwords.words('english'))
                     query_tokens = word_tokenize(query.lower())
                     keywords = [token for token in query_tokens 
-                              if token.isalnum() and token not in stop_words and len(token) > 2]
+                              if token.isalnum() and token not in STOPWORDS and len(token) > 2]
                 except Exception:
                     # Fallback if NLTK resources unavailable
                     keywords = [w.lower() for w in re.findall(r'\b\w{3,}\b', query.lower())]
@@ -675,9 +760,10 @@ class RAGDocumentService:
             # Cache results
             self.search_cache[cache_key] = (processed_results[:limit], datetime.now())
             
-            return processed_results[:limit]  # Trim to requested limit
+            return processed_results[:limit]
+            
         except Exception as e:
-            logger.error(f"Error performing RAG vector search: {e}")
+            logger.error(f"Error in vector search: {e}")
             # Fallback to keyword search
             return self._keyword_search(query, limit, filters)
     

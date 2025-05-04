@@ -3,9 +3,6 @@ import pandas as pd
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 import numpy as np
-import nltk
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
 import uuid
 import logging
 
@@ -41,6 +38,23 @@ except ImportError:
         return [word for word in text.split() if word]
     
     logger.warning("NLTK import failed, using fallback tokenization functions")
+
+# Try to import dimensionality reduction components with fallbacks
+try:
+    from sklearn.decomposition import TruncatedSVD, PCA
+    from sklearn.random_projection import GaussianRandomProjection
+    
+    SKLEARN_AVAILABLE = True
+    logger.info("Scikit-learn available for dimensionality reduction")
+    
+    # Initialize dimensionality reduction model
+    # TruncatedSVD (LSA) is faster and more memory-efficient than PCA
+    _dim_reduction_model = None
+    _reduction_dim = 100  # Target dimensionality
+    
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    logger.warning("Scikit-learn not available, dimensionality reduction will be skipped")
 
 def clean_text(text: str) -> str:
     """Clean and normalize text for better embedding quality."""
@@ -195,15 +209,20 @@ def expand_query(query: str) -> str:
     # Clean and tokenize the query
     clean_query = clean_text(query.lower())
     
-    try:
-        # Tokenize and remove stopwords
-        tokens = word_tokenize(clean_query)
-        stop_words = set(stopwords.words('english'))
-        tokens = [token for token in tokens if token.isalnum() and token not in stop_words]
-    except Exception as e:
-        logger.warning(f"Error in NLTK processing: {e}. Using simple tokenization.")
+    # Use our fallback mechanisms based on NLTK_AVAILABLE flag
+    if NLTK_AVAILABLE:
+        try:
+            # Tokenize and remove stopwords
+            tokens = word_tokenize(clean_query)
+            tokens = [token for token in tokens if token.isalnum() and token not in STOPWORDS]
+        except Exception as e:
+            logger.warning(f"Error in NLTK processing: {e}. Using simple tokenization.")
+            tokens = [token for token in re.findall(r'\w+', clean_query) 
+                     if len(token) > 2]  # Simple fallback tokenization
+    else:
+        # Use simple fallback tokenization if NLTK is not available
         tokens = [token for token in re.findall(r'\w+', clean_query) 
-                 if len(token) > 2]  # Simple fallback tokenization
+                 if len(token) > 2]
     
     # Legal term mappings with expanded synonyms
     legal_synonyms = {
@@ -600,6 +619,89 @@ def normalize_legal_text(text: str) -> str:
     text = re.sub(r'w\.r\.t\.', r'with respect to', text)
     
     return text
+
+def setup_dim_reduction(vectors: List[List[float]], target_dim: int = 100) -> bool:
+    """Set up dimensionality reduction model for vector embeddings.
+    
+    This function initializes a dimensionality reduction model (TruncatedSVD)
+    using sample vectors, which can then be used to reduce future vectors.
+    
+    Args:
+        vectors: Sample vectors to fit the model
+        target_dim: Target dimensionality (default 100)
+        
+    Returns:
+        bool: True if setup was successful, False otherwise
+    """
+    global _dim_reduction_model, _reduction_dim
+    
+    if not SKLEARN_AVAILABLE:
+        logger.warning("Scikit-learn not available, skipping dimensionality reduction setup")
+        return False
+        
+    # Ensure we have enough samples and dimensionality makes sense
+    if not vectors or len(vectors) < 5:
+        logger.warning("Not enough sample vectors for dimensionality reduction")
+        return False
+    
+    try:
+        # Convert to numpy array
+        vectors_array = np.array(vectors)
+        original_dim = vectors_array.shape[1]
+        
+        # Don't reduce if original dimension is already small
+        if original_dim <= target_dim:
+            logger.info(f"Original dimensionality {original_dim} is already <= target {target_dim}, no reduction needed")
+            return False
+            
+        logger.info(f"Setting up dimensionality reduction from {original_dim} to {target_dim}")
+        
+        # Using TruncatedSVD (LSA) for dimensionality reduction
+        _reduction_dim = target_dim
+        _dim_reduction_model = TruncatedSVD(n_components=target_dim, random_state=42)
+        
+        # Fit the model to sample vectors
+        _dim_reduction_model.fit(vectors_array)
+        
+        # Log explained variance
+        explained_variance = sum(_dim_reduction_model.explained_variance_ratio_)
+        logger.info(f"Dimensionality reduction captures {explained_variance:.2%} of variance")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error setting up dimensionality reduction: {e}")
+        _dim_reduction_model = None
+        return False
+
+def reduce_vector_dimension(vector: List[float]) -> List[float]:
+    """Reduce dimensionality of a vector using the initialized model.
+    
+    Args:
+        vector: Original high-dimensional vector
+        
+    Returns:
+        Reduced dimensionality vector, or original if reduction not possible
+    """
+    global _dim_reduction_model
+    
+    # Return original if reduction not possible
+    if not SKLEARN_AVAILABLE or _dim_reduction_model is None:
+        return vector
+        
+    try:
+        # Convert to numpy array of shape (1, dim)
+        vector_array = np.array([vector])
+        
+        # Transform vector
+        reduced = _dim_reduction_model.transform(vector_array)
+        
+        # Convert back to list and return
+        return reduced[0].tolist()
+        
+    except Exception as e:
+        logger.error(f"Error reducing vector dimension: {e}")
+        return vector
 
 def enhance_text_for_embedding(text: str, document_type: str = 'unknown', metadata: Dict[str, Any] = None) -> str:
     """Enhance text for improved legal domain vector embeddings by adding domain knowledge and structure.
