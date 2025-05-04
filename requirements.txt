@@ -17,7 +17,6 @@ chromadb==0.4.22
 sentence-transformers==2.5.1
 numpy==1.26.4
 scikit-learn==1.4.0
-nltk==3.8.1
 hf_xet>=0.13.0
 
 # Monitoring and logging

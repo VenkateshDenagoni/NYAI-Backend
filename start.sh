@@ -19,15 +19,6 @@ if [ -n "$RAILWAY_STATIC_URL" ] || [ -n "$RAILWAY_SERVICE_ID" ] || [ -n "$RAILWA
   export GUNICORN_CMD_ARGS="--workers=2 --threads=2 --timeout=90 --max-requests=500 --max-requests-jitter=50 --worker-class=gthread"
   echo "Optimized worker configuration for Railway environment"
   
-  # Check NLTK data access
-  if [ -d "/app/nltk_data" ]; then
-    echo "NLTK data directory exists at /app/nltk_data"
-    # Set NLTK_DATA environment variable
-    export NLTK_DATA=/app/nltk_data
-  else
-    echo "Warning: NLTK data directory not found. NLP features may be limited."
-  fi
-  
   # Set a very high error threshold for ChromaDB to prevent failures
   export CHROMA_ERROR_THRESHOLD=100
 fi
