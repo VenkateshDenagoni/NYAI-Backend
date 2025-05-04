@@ -25,6 +25,7 @@ MAX_RETRIES = 3
 RETRY_MULTIPLIER = 1
 MAX_RETRY_WAIT = 10
 MAX_CONVERSATION_TURNS = 15  # Store up to 15 turns of conversation
+MAX_CACHE_SIZE = 1000  # Maximum number of entries in response cache
 
 # Cache for responses
 response_cache = {}
@@ -344,6 +345,48 @@ class RAGAIService:
                 logger.error(f"[{request_id}] API error: {error_str}")
                 yield "I'm sorry, but I encountered an error processing your request. Please try again later."
     
+    def _clean_response_cache(self):
+        """Clean expired response cache entries to prevent memory leaks.
+        
+        This function performs two types of cleanup:
+        1. Remove entries that have expired based on TTL
+        2. If the cache exceeds the maximum size, remove the oldest entries
+        """
+        global response_cache
+        
+        # Skip if cache is empty
+        if not response_cache:
+            return
+            
+        current_time = time.time()
+        expired_keys = []
+        
+        # Find expired entries
+        for key, (_, timestamp) in response_cache.items():
+            if current_time - timestamp > CACHE_TTL:
+                expired_keys.append(key)
+        
+        # Remove expired entries
+        for key in expired_keys:
+            response_cache.pop(key, None)
+            
+        if expired_keys:
+            logger.info(f"Cleaned {len(expired_keys)} expired response cache entries")
+            
+        # Check if we're still over the maximum size
+        if len(response_cache) > MAX_CACHE_SIZE:
+            # Get all entries sorted by age (oldest first)
+            sorted_entries = sorted(response_cache.items(), key=lambda x: x[1][1])
+            
+            # Calculate how many to remove (remove oldest 25% of entries)
+            to_remove = max(int(len(response_cache) * 0.25), len(response_cache) - MAX_CACHE_SIZE)
+            
+            # Remove oldest entries
+            for key, _ in sorted_entries[:to_remove]:
+                response_cache.pop(key, None)
+                
+            logger.info(f"Removed {to_remove} oldest entries from response cache due to size limit")
+    
     def generate_response(self, prompt: str, session_id: str = None, request_id: str = None) -> str:
         """Generate a response using RAG."""
         # Track request with unique ID if not provided
@@ -360,6 +403,9 @@ class RAGAIService:
         try:
             # Clean old sessions periodically
             self._clean_old_sessions()
+            
+            # Clean response cache to prevent memory leaks
+            self._clean_response_cache()
             
             # Validate input
             prompt = self._validate_input(prompt)
@@ -462,6 +508,9 @@ class RAGAIService:
         try:
             # Clean old sessions periodically
             self._clean_old_sessions()
+            
+            # Clean response cache to prevent memory leaks
+            self._clean_response_cache()
             
             # Validate input
             prompt = self._validate_input(prompt)
