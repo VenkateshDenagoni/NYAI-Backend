@@ -25,8 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create and configure directories for the non-root user
-RUN mkdir -p /app/logs /app/instance /app/instance/sessions \
-    && chmod -R 777 /app/logs /app/instance /app/instance/sessions \
+RUN mkdir -p /app/logs /app/instance /app/instance/sessions /app/db \
+    && chmod -R 777 /app/logs /app/instance /app/instance/sessions /app/db \
     && touch /app/logs/nyai_api.log \
     && chmod 666 /app/logs/nyai_api.log
 
