@@ -14,6 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 import math
 import time
 from collections import defaultdict
+import shutil  # Add import for directory operations
 
 from src.config import config
 from src.utils.logger import logger
@@ -104,7 +105,7 @@ class RAGDocumentService:
             self._embedding_model_loaded = True  # Mark as tried to avoid repeated attempts
     
     def _initialize_chromadb(self):
-        """Lazy initialization of ChromaDB client."""
+        """Lazy initialization of ChromaDB client with recovery for database corruption."""
         try:
             start_time = time.time()
             logger.info("Initializing ChromaDB client (lazy loading)...")
@@ -116,6 +117,54 @@ class RAGDocumentService:
             init_time = time.time() - start_time
             logger.info(f"RAG ChromaDB initialized successfully in {init_time:.2f}s")
         except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Check for the specific error about table already existing
+            if 'table embeddings_queue already exists' in error_msg:
+                logger.warning(f"Detected ChromaDB database corruption: {e}")
+                
+                try:
+                    # Implement recovery process - backup and remove the corrupted database
+                    recovery_start = time.time()
+                    logger.info("Starting ChromaDB recovery process...")
+                    
+                    # Create a backup directory name with timestamp
+                    backup_dir = self.db_path.parent / f"chroma_rag_backup_{int(time.time())}"
+                    
+                    # Backup existing database if possible (not critical if it fails)
+                    try:
+                        if self.db_path.exists():
+                            logger.info(f"Backing up existing ChromaDB to {backup_dir}")
+                            shutil.copytree(self.db_path, backup_dir)
+                            logger.info("Backup completed successfully")
+                    except Exception as backup_err:
+                        logger.warning(f"Could not backup ChromaDB (continuing anyway): {backup_err}")
+                    
+                    # Remove the corrupted database directory
+                    if self.db_path.exists():
+                        logger.info(f"Removing corrupted ChromaDB directory: {self.db_path}")
+                        shutil.rmtree(self.db_path)
+                    
+                    # Recreate the directory
+                    logger.info("Creating fresh ChromaDB directory")
+                    self.db_path.mkdir(parents=True, exist_ok=True)
+                    
+                    # Try to initialize ChromaDB again with the clean directory
+                    logger.info("Reinitializing ChromaDB after recovery")
+                    self._chroma_client = chromadb.PersistentClient(
+                        path=str(self.db_path)
+                    )
+                    
+                    recovery_time = time.time() - recovery_start
+                    logger.info(f"ChromaDB recovery successful in {recovery_time:.2f}s")
+                    
+                    # Return since we've now successfully initialized
+                    return
+                except Exception as recovery_err:
+                    logger.error(f"ChromaDB recovery process failed: {recovery_err}")
+                    # Fall through to the standard error handling below
+            
+            # If we get here, either it wasn't the specific error or recovery failed
             logger.error(f"Error initializing RAG ChromaDB: {e}")
             logger.warning("Falling back to in-memory storage; vector search will not be available for RAG")
             self._chroma_client = None
