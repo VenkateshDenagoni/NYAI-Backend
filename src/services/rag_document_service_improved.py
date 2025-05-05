@@ -30,9 +30,33 @@ class RAGDocumentService:
     
     def __init__(self):
         """Initialize the RAG Document Service."""
-        # Use environment variables if available, otherwise use relative paths
+        # Check if we're in stateless mode (for Railway deployment)
+        self.stateless_mode = os.getenv("STATELESS_MODE", "false").lower() == "true"
+        if self.stateless_mode:
+            logger.info("Running in stateless mode (no persistent volumes)")
+        
+        # Find knowledge base directory with fallback options
         knowledge_base_env = os.getenv("KNOWLEDGE_BASE_DIR")
         self.knowledge_base_dir = Path(knowledge_base_env) if knowledge_base_env else Path(__file__).parent.parent.parent / "knowledge_base"
+        
+        # Try fallback paths if primary path doesn't exist or is empty
+        if not self.knowledge_base_dir.exists() or not list(self.knowledge_base_dir.glob("*.csv")):
+            # Define possible fallback paths
+            fallback_paths = [
+                Path("/app/knowledge_base"),
+                Path(__file__).parent.parent.parent / "data" / "knowledge_base",
+                Path(__file__).parent.parent / "data" / "knowledge_base",
+                Path.cwd() / "knowledge_base"
+            ]
+            
+            for path in fallback_paths:
+                if path.exists() and list(path.glob("*.csv")):
+                    logger.info(f"Using fallback knowledge base path: {path}")
+                    self.knowledge_base_dir = path
+                    break
+            
+            if not self.knowledge_base_dir.exists() or not list(self.knowledge_base_dir.glob("*.csv")):
+                logger.warning(f"No valid knowledge base directory found after trying fallbacks")
         
         self.documents = {}
         self.metadata = {}
@@ -47,16 +71,22 @@ class RAGDocumentService:
         self._chroma_client = None
         self._documents_collection = None
         
-        # Use environment variables if available, otherwise use relative paths
-        vector_db_env = os.getenv("VECTOR_DB_PATH")
-        self.db_path = Path(vector_db_env) if vector_db_env else Path(__file__).parent.parent.parent / "db" / "chroma_rag"
-        
-        # Ensure the directory exists
-        self.db_path.mkdir(parents=True, exist_ok=True)
+        # For stateless mode, we don't use persistent storage
+        if self.stateless_mode:
+            self.db_path = None
+            logger.info("Using in-memory ChromaDB in stateless mode")
+        else:
+            # Use environment variables if available, otherwise use relative paths
+            vector_db_env = os.getenv("VECTOR_DB_PATH")
+            self.db_path = Path(vector_db_env) if vector_db_env else Path(__file__).parent.parent.parent / "db" / "chroma_rag"
+            
+            # Ensure the directory exists if not in stateless mode
+            if self.db_path:
+                self.db_path.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Using vector database path: {self.db_path}")
         
         # Log path information
         logger.info(f"Using knowledge base directory: {self.knowledge_base_dir}")
-        logger.info(f"Using vector database path: {self.db_path}")
         
         # Load documents
         self._load_documents()
@@ -105,66 +135,35 @@ class RAGDocumentService:
             self._embedding_model_loaded = True  # Mark as tried to avoid repeated attempts
     
     def _initialize_chromadb(self):
-        """Lazy initialization of ChromaDB client with recovery for database corruption."""
+        """Lazy initialization of ChromaDB client."""
         try:
             start_time = time.time()
-            logger.info("Initializing ChromaDB client (lazy loading)...")
             
-            self._chroma_client = chromadb.PersistentClient(
-                path=str(self.db_path)
-            )
+            # Use in-memory client in stateless mode, otherwise use persistent
+            if self.stateless_mode:
+                logger.info("Initializing in-memory ChromaDB client...")
+                self._chroma_client = chromadb.Client()
+            else:
+                logger.info("Initializing persistent ChromaDB client...")
+                self._chroma_client = chromadb.PersistentClient(
+                    path=str(self.db_path)
+                )
             
             init_time = time.time() - start_time
             logger.info(f"RAG ChromaDB initialized successfully in {init_time:.2f}s")
         except Exception as e:
-            error_msg = str(e).lower()
-            
-            # Check for the specific error about table already existing
-            if 'table embeddings_queue already exists' in error_msg:
+            # In stateless mode, try in-memory client as fallback regardless of error
+            if not self.stateless_mode and 'table embeddings_queue already exists' in str(e).lower():
                 logger.warning(f"Detected ChromaDB database corruption: {e}")
-                
+                logger.info("Switching to in-memory storage instead of attempting recovery")
                 try:
-                    # Implement recovery process - backup and remove the corrupted database
-                    recovery_start = time.time()
-                    logger.info("Starting ChromaDB recovery process...")
-                    
-                    # Create a backup directory name with timestamp
-                    backup_dir = self.db_path.parent / f"chroma_rag_backup_{int(time.time())}"
-                    
-                    # Backup existing database if possible (not critical if it fails)
-                    try:
-                        if self.db_path.exists():
-                            logger.info(f"Backing up existing ChromaDB to {backup_dir}")
-                            shutil.copytree(self.db_path, backup_dir)
-                            logger.info("Backup completed successfully")
-                    except Exception as backup_err:
-                        logger.warning(f"Could not backup ChromaDB (continuing anyway): {backup_err}")
-                    
-                    # Remove the corrupted database directory
-                    if self.db_path.exists():
-                        logger.info(f"Removing corrupted ChromaDB directory: {self.db_path}")
-                        shutil.rmtree(self.db_path)
-                    
-                    # Recreate the directory
-                    logger.info("Creating fresh ChromaDB directory")
-                    self.db_path.mkdir(parents=True, exist_ok=True)
-                    
-                    # Try to initialize ChromaDB again with the clean directory
-                    logger.info("Reinitializing ChromaDB after recovery")
-                    self._chroma_client = chromadb.PersistentClient(
-                        path=str(self.db_path)
-                    )
-                    
-                    recovery_time = time.time() - recovery_start
-                    logger.info(f"ChromaDB recovery successful in {recovery_time:.2f}s")
-                    
-                    # Return since we've now successfully initialized
+                    self._chroma_client = chromadb.Client()
+                    logger.info("Successfully initialized in-memory ChromaDB as fallback")
                     return
-                except Exception as recovery_err:
-                    logger.error(f"ChromaDB recovery process failed: {recovery_err}")
-                    # Fall through to the standard error handling below
+                except Exception as im_e:
+                    logger.error(f"Error initializing in-memory ChromaDB fallback: {im_e}")
             
-            # If we get here, either it wasn't the specific error or recovery failed
+            # If we get here, all initialization attempts failed
             logger.error(f"Error initializing RAG ChromaDB: {e}")
             logger.warning("Falling back to in-memory storage; vector search will not be available for RAG")
             self._chroma_client = None
