@@ -409,45 +409,45 @@ class RAGDocumentService:
                     if len(chunks) == 0:
                         # Force at least one chunk with cleaned text
                         chunks = [clean_text(combined_text)]
+            
+            # Process each chunk
+            for i, chunk in enumerate(chunks):
+                # Create unique document ID
+                doc_id = f"{source_name}_{index}_{i}"
                 
-                    # Process each chunk
-                    for i, chunk in enumerate(chunks):
-                        # Create unique document ID
-                        doc_id = f"{source_name}_{index}_{i}"
+                # Add chunk metadata
+                chunk_metadata = {
+                    **metadata,
+                    "chunk_index": i,
+                    "total_chunks": len(chunks)
+                }
+                
+                # Store in document dict
+                self.documents[doc_id] = {
+                    "content": chunk,
+                    "metadata": chunk_metadata,
+                    "id": doc_id
+                }
+                
+                # Add enhanced text for vector embedding
+                enhanced_text = enhance_text_for_embedding(chunk, document_type, chunk_metadata)
+                
+                # Prepare for vector batch insertion
+                if self.documents_collection:
+                    ids.append(doc_id)
+                    texts.append(enhanced_text)  # Use enhanced text for embeddings
+                    metadata_list.append(chunk_metadata)
                     
-                        # Add chunk metadata
-                        chunk_metadata = {
-                            **metadata,
-                            "chunk_index": i,
-                            "total_chunks": len(chunks)
-                        }
-                    
-                        # Store in document dict
-                        self.documents[doc_id] = {
-                            "content": chunk,
-                            "metadata": chunk_metadata,
-                            "id": doc_id
-                        }
-                        
-                        # Add enhanced text for vector embedding
-                        enhanced_text = enhance_text_for_embedding(chunk, document_type, chunk_metadata)
-                        
-                        # Prepare for vector batch insertion
-                        if self.documents_collection:
-                            ids.append(doc_id)
-                            texts.append(enhanced_text)  # Use enhanced text for embeddings
-                            metadata_list.append(chunk_metadata)
-                            
-                            # Collect sample embeddings for dimensionality reduction (if not already set up)
-                            if len(sample_embeddings) < 200:  # Collect up to 200 samples
-                                # Get the vector embedding from the embedding function directly
-                                try:
-                                    if SKLEARN_AVAILABLE and self.embedding_function:
-                                        embedding = self.embedding_function([enhanced_text])[0]
-                                        if embedding is not None and len(embedding) > 0:
-                                            sample_embeddings.append(embedding)
-                                except Exception as e:
-                                    logger.debug(f"Error getting sample embedding: {e}")
+                    # Collect sample embeddings for dimensionality reduction (if not already set up)
+                    if len(sample_embeddings) < 200:  # Collect up to 200 samples
+                        # Get the vector embedding from the embedding function directly
+                        try:
+                            if SKLEARN_AVAILABLE and self.embedding_function:
+                                embedding = self.embedding_function([enhanced_text])[0]
+                                if embedding is not None and len(embedding) > 0:
+                                    sample_embeddings.append(embedding)
+                        except Exception as e:
+                            logger.debug(f"Error getting sample embedding: {e}")
                 
                 # Periodically add vectors to save memory - add batch to ChromaDB
                 if self.documents_collection and texts and (batch_end == total_rows or len(texts) >= 100):
@@ -723,7 +723,7 @@ class RAGDocumentService:
                     
                     # Add to results
                     processed_results.append({
-                        "content": content,
+                            "content": content,
                         "metadata": metadata,
                         "score": float(score),
                         "id": doc_id,
@@ -1247,7 +1247,7 @@ class RAGDocumentService:
                         # If cross_references is a list (old format)
                         elif isinstance(metadata["cross_references"], list) and metadata["cross_references"]:
                             citation_parts.append(f"Related References: {len(metadata['cross_references'])}")
-                    
+                
                     # Include relevance score
                     citation_parts.append(f"Relevance: {score:.2f}")
                     
