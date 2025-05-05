@@ -36,6 +36,9 @@ EXPOSE 8080
 RUN echo '#!/bin/bash\n\
 \n\
 echo "Starting NYAI Backend..."\n\
+# Ensure PORT has a value\n\
+PORT=${PORT:-8080}\n\
+echo "Using port: $PORT"\n\
 exec gunicorn --bind $HOST:$PORT --workers 2 --threads 4 "src.app:app"\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
