@@ -65,6 +65,21 @@ def create_app():
         logger.addHandler(console_handler)
         logger.info("Console logging enabled")
     
+    # Add root route
+    @app.route("/")
+    def index():
+        return {
+            "name": "NYAI Backend API",
+            "version": config.VERSION,
+            "status": "running",
+            "endpoints": {
+                "health": "/health",
+                "rag_query": "/api/rag/query",
+                "rag_status": "/api/rag/status"
+            },
+            "docs": "See README.md for API documentation"
+        }
+    
     # Add health check endpoint
     @app.route("/health")
     def health_check():
