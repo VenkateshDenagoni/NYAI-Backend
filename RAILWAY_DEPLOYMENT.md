@@ -81,9 +81,18 @@ You need to upload your knowledge base files to the persistent volume. There are
 
 ### API Key Issues
 
-If you see errors related to the Gemini API:
-- Verify your API key is correct
-- Ensure your API key has access to the Gemini model
+#### Google Gemini API Key (CRITICAL)
+The GOOGLE_API_KEY is absolutely required for the application to function:
+- The application will fail to start or respond to queries without a valid Google Gemini API key
+- Obtain a key from [Google AI Studio](https://aistudio.google.com/)
+- Ensure your API key has access to the Gemini model (gemini-2.0-flash-001)
+- Set this as an environment variable in Railway
+
+#### Authentication API Key
+If you're seeing authentication errors with API requests:
+- Verify API_KEY is set in Railway environment variables 
+- Ensure your client is sending the API key in the X-API-Key header
+- Check that ENABLE_AUTH is set to "true" if you want authentication
 
 ### Volume Issues
 

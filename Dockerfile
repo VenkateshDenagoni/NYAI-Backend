@@ -32,5 +32,12 @@ ENV RAILWAY_SERVICE_ID=nyai-backend
 # Expose the port
 EXPOSE 8080
 
-# Run the application with Gunicorn for production
-CMD gunicorn --bind $HOST:$PORT --workers 2 --threads 4 "src.app:app" 
+# Create startup script
+RUN echo '#!/bin/bash\n\
+\n\
+echo "Starting NYAI Backend..."\n\
+exec gunicorn --bind $HOST:$PORT --workers 2 --threads 4 "src.app:app"\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# Run the startup script
+CMD ["/app/start.sh"] 

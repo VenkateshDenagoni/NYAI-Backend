@@ -29,7 +29,10 @@ class RAGDocumentService:
     
     def __init__(self):
         """Initialize the RAG Document Service."""
-        self.knowledge_base_dir = Path(__file__).parent.parent.parent / "knowledge_base"
+        # Use environment variables if available, otherwise use relative paths
+        knowledge_base_env = os.getenv("KNOWLEDGE_BASE_DIR")
+        self.knowledge_base_dir = Path(knowledge_base_env) if knowledge_base_env else Path(__file__).parent.parent.parent / "knowledge_base"
+        
         self.documents = {}
         self.metadata = {}
         self.search_cache = {}
@@ -43,10 +46,16 @@ class RAGDocumentService:
         self._chroma_client = None
         self._documents_collection = None
         
-        # Still initialize the database directory path
-        self.db_path = Path(__file__).parent.parent.parent / "db" / "chroma_rag"
+        # Use environment variables if available, otherwise use relative paths
+        vector_db_env = os.getenv("VECTOR_DB_PATH")
+        self.db_path = Path(vector_db_env) if vector_db_env else Path(__file__).parent.parent.parent / "db" / "chroma_rag"
+        
         # Ensure the directory exists
         self.db_path.mkdir(parents=True, exist_ok=True)
+        
+        # Log path information
+        logger.info(f"Using knowledge base directory: {self.knowledge_base_dir}")
+        logger.info(f"Using vector database path: {self.db_path}")
         
         # Load documents
         self._load_documents()

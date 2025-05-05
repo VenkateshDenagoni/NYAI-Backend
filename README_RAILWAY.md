@@ -38,32 +38,22 @@ The following files are essential for Railway deployment:
 
 For a quick deployment, follow these steps:
 
-1. Run the preparation script:
-   ```bash
-   python scripts/update_for_railway.py
-   ```
-
-2. Push your code to GitHub:
+1. Push your code to GitHub:
    ```bash
    git push origin main
    ```
 
-3. Connect your GitHub repository to Railway
+2. Connect your GitHub repository to Railway
 
-4. Create a new service and select your repository
+3. Create a new service and select your repository
 
-5. Add persistent volumes according to railway.toml:
+4. Add persistent volumes according to railway.toml:
    - One mounted at `/app/knowledge_base` for knowledge base files
    - One mounted at `/app/db` for the database files
 
-6. Set required environment variables (see [Environment Variables](#environment-variables))
+5. Set required environment variables (see [Environment Variables](#environment-variables))
 
-7. Deploy your application
-
-8. Verify deployment:
-   ```bash
-   python scripts/check_deployment.py --url https://your-app-url.railway.app
-   ```
+6. Deploy your application
 
 ## Step-by-Step Deployment Guide
 
@@ -75,16 +65,9 @@ Before deploying to Railway, ensure your repository has all the necessary deploy
 # Clone the repository (if you haven't already)
 git clone https://github.com/yourusername/nyai-backend.git
 cd nyai-backend
-
-# Run the preparation script
-python scripts/update_for_railway.py
 ```
 
-This script will:
-- Check for required deployment files
-- Update the `.env.production` file with Railway-compatible settings
-- Ensure your knowledge base is prepared for deployment
-- Offer to commit and push changes to GitHub
+Make sure your repository includes all required deployment files such as `Dockerfile`, `railway.toml`, and `.dockerignore`.
 
 ### 2. Connect to Railway
 
@@ -113,11 +96,7 @@ This script will:
 ### 5. Verify Deployment
 
 1. Wait for deployment to complete
-2. Run the verification script:
-   ```bash
-   python scripts/check_deployment.py --url https://your-app-url.railway.app
-   ```
-3. Test the application with sample queries
+2. Test the application with sample queries
 
 ## Environment Variables
 
@@ -125,6 +104,7 @@ The following environment variables are required:
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
+| GOOGLE_API_KEY | Google Gemini API key for LLM functionality | Yes | - |
 | API_KEY | Authentication key for API access | Yes | - |
 | PORT | Application port (provided by Railway) | No | Set by Railway |
 | FLASK_ENV | Flask environment | No | production |
@@ -175,30 +155,13 @@ To scale your application on Railway:
 
 ## Deployment Scripts
 
-The repository includes several scripts to facilitate deployment:
+The deployment has been simplified and no longer requires any scripts. Simply:
 
-1. `scripts/update_for_railway.py` - Prepares your repository for Railway deployment
-2. `scripts/prepare_for_railway.py` - Optimizes knowledge base files for deployment
-3. `scripts/check_deployment.py` - Verifies deployment status and health
-
-### Usage Examples
-
-```bash
-# Update environment and prepare for deployment
-python scripts/update_for_railway.py
-
-# Prepare knowledge base files
-python scripts/prepare_for_railway.py
-
-# Check deployment (basic)
-python scripts/check_deployment.py --url https://your-app-url.railway.app
-
-# Check deployment (with authentication)
-python scripts/check_deployment.py --url https://your-app-url.railway.app --api-key YOUR_API_KEY
-
-# Monitor deployment startup (check every 30 seconds, maximum 20 checks)
-python scripts/check_deployment.py --url https://your-app-url.railway.app --check-interval 30 --max-checks 20
-```
+1. Ensure your code is ready for deployment
+2. Push to GitHub
+3. Connect to Railway 
+4. Configure environments and volumes
+5. Deploy
 
 ## Troubleshooting
 
@@ -224,19 +187,8 @@ python scripts/check_deployment.py --url https://your-app-url.railway.app --chec
 
 **Solutions**:
 1. Increase memory allocation in Railway settings
-2. Optimize knowledge base files using `scripts/prepare_for_railway.py`
+2. Optimize knowledge base files before deployment
 3. Adjust application configuration to use less memory
-
-#### API Authentication Failures
-
-**Symptoms**:
-- API requests return 401 Unauthorized
-- Cannot access protected endpoints
-
-**Solutions**:
-1. Verify API_KEY is set in Railway environment variables
-2. Ensure client is sending API key in X-API-Key header
-3. Check if ENABLE_AUTH is set to "true"
 
 ### Getting Help
 
