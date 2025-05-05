@@ -1,47 +1,36 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    NYAI_ENV=production \
-    LOG_TO_CONSOLE=true \
-    USE_CHROMADB=false \
-    CHROMA_ERROR_THRESHOLD=100
-
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libpq-dev \
-    curl \
+    libffi-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create required directories with proper permissions before any code is copied
-RUN mkdir -p /app/logs /app/instance /app/instance/sessions /app/db/chroma \
-    && chmod -R 777 /app/logs /app/instance /app/instance/sessions /app/db
-
-# Copy requirements first for better layer caching
+# Copy requirements first for better cache utilization
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy the application code
 COPY . .
 
-# Create empty log file with proper permissions
-RUN touch /app/logs/nyai_api.log && chmod 666 /app/logs/nyai_api.log
+# Create necessary directories
+RUN mkdir -p /app/db/chroma_rag
+RUN mkdir -p /app/logs
 
-# Make sure start.sh is executable
-RUN chmod +x /app/start.sh
+# Set environment variable for production
+ENV NYAI_ENV=production
+ENV PORT=8080
+ENV HOST=0.0.0.0
+ENV DEBUG=False
 
-# Create non-root user and set ownership
-RUN chown -R 1000:1000 /app/db /app/logs /app/instance \
-    && adduser --disabled-password --gecos "" --uid 1000 nyai
-USER nyai
+# Railway-specific environment variable to enable garbage collection
+ENV RAILWAY_SERVICE_ID=nyai-backend
 
-# Default port
+# Expose the port
 EXPOSE 8080
 
-# Run the existing start script
-CMD ["/app/start.sh"] 
+# Run the application with Gunicorn for production
+CMD gunicorn --bind $HOST:$PORT --workers 2 --threads 4 "src.app:app" 

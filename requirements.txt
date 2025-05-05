@@ -35,3 +35,7 @@ pytest-cov==4.1.0
 
 # Data processing
 pandas==2.2.1
+
+# Deployment tools
+rich==13.6.0
+GitPython==3.1.41

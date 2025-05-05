@@ -1,134 +1,117 @@
-# Deploying NYAI on Railway
+# NYAI Backend - Railway Deployment Guide
 
-This guide will walk you through deploying your NYAI project on [Railway](https://railway.app/), a modern platform that makes deployment simple.
+This guide provides step-by-step instructions to deploy the NYAI Backend to Railway directly from GitHub.
 
 ## Prerequisites
 
-1. **GitHub Account**: Make sure you have a GitHub account
-2. **Railway Account**: Sign up for a free account on [Railway](https://railway.app/) (you can sign up with your GitHub account)
-3. **Google Gemini API Key**: Get your API key from [Google AI Studio](https://aistudio.google.com/)
-
-## Preparation Steps
-
-### 1. Create a GitHub Repository
-
-1. Create a new private GitHub repository
-2. Push your NYAI project to this repository:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
-   git push -u origin main
-   ```
-
-### 2. Set Up Your Environment Variables
-
-IMPORTANT: For security reasons, we DO NOT store actual API keys in the repository. Instead:
-
-1. Copy `.env.example` to create a new file called `.env.production` (this file should NOT be committed to Git)
-2. In your local `.env.production` file, update:
-   - Your actual Google Gemini API key
-   - A secure random string for SECRET_KEY
-
-3. These sensitive values should ONLY be set in the Railway dashboard, not in files committed to your repository.
+1. GitHub account with the NYAI Backend repository
+2. Railway account ([sign up here](https://railway.app/))
+3. Google Gemini API key ([get one here](https://aistudio.google.com/))
 
 ## Deployment Steps
 
-### 1. Create a New Project on Railway
+### 1. Fork the Repository (if needed)
 
-1. Log in to [Railway Dashboard](https://railway.app/dashboard)
-2. Click "New Project"
-3. Choose "Deploy from GitHub repo"
-4. Select your GitHub repository with the NYAI project
-5. Choose the main branch
+If you don't own the repository, fork it to your GitHub account.
 
-### 2. Configure Environment Variables in Railway (IMPORTANT)
+### 2. Connect to Railway
 
-1. After creating the project, go to the "Variables" tab
-2. Add these environment variables:
-   - `GOOGLE_API_KEY`: Your Google Gemini API key
-   - `SECRET_KEY`: A secure random string
-   - `NYAI_ENV`: production
-   - `AUTH_REQUIRED`: true or false (depending on if you want API authentication)
-   - `FLASK_APP`: src/app.py
-   - `FLASK_ENV`: production
-   - `DEBUG`: False
+1. Log in to [Railway](https://railway.app/)
+2. Click "New Project" > "Deploy from GitHub repo"
+3. Select the NYAI Backend repository
+4. Railway will automatically detect the project configuration
 
-   Note: Railway will automatically set the PORT variable for you.
+### 3. Configure Environment Variables
 
-### 3. Monitor Deployment
+In the Railway dashboard for your project:
 
-1. Go to the "Deployments" tab
-2. You'll see your application building and deploying
-3. Railway will automatically detect your Dockerfile and build using it
+1. Go to the "Variables" tab
+2. Add the following environment variables:
 
-### 4. Access Your Application
+```
+GOOGLE_API_KEY=your_gemini_api_key_here
+SECRET_KEY=your_secure_random_string
+NYAI_ENV=production
+PORT=8080
+HOST=0.0.0.0
+DEBUG=False
+AUTH_REQUIRED=True
+```
 
-1. Once deployment completes, click on the "Settings" tab
-2. Find your app's URL in the "Domains" section
-3. Open this URL and add `/health` to check if your app is running
-   - Example: `https://your-app-name.railway.app/health`
+Generate a secure SECRET_KEY with: `openssl rand -hex 32` or any random string generator.
+
+### 4. Configure Persistent Storage
+
+The application requires persistent storage for the knowledge base and vector database:
+
+1. Go to the "Volumes" tab
+2. Create two volumes:
+   - Name: `knowledge_base`, Mount Path: `/app/knowledge_base`
+   - Name: `db`, Mount Path: `/app/db`
+
+### 5. Deploy the Application
+
+1. Go to the "Settings" tab
+2. Click "Generate Domain" to get a public URL for your app
+3. Railway will automatically deploy the application
+
+### 6. Upload Knowledge Base Data
+
+You need to upload your knowledge base files to the persistent volume. There are two ways to do this:
+
+#### Option 1: Use Railway CLI
+
+1. Install Railway CLI: `npm i -g @railway/cli`
+2. Login: `railway login`
+3. Link to your project: `railway link`
+4. Upload CSV files: `railway upload /path/to/your/knowledge_base/*.csv /app/knowledge_base/`
+
+#### Option 2: Use Docker and Railway Volumes
+
+1. In the Railway dashboard, go to Volumes and find the volume ID
+2. Use a custom container to copy files to the volume (using Railway's documentation)
+
+### 7. Verify Deployment
+
+1. Once deployed, open the generated Railway URL
+2. Add `/health` to the URL to check the API status
+3. You should see a JSON response showing components health status
 
 ## Troubleshooting
 
-### Deployment Failures
+### API Key Issues
 
-If your deployment fails:
-1. Check the build logs in the "Deployments" tab
-2. Make sure all your environment variables are set correctly in Railway
-3. Verify your Dockerfile is valid
+If you see errors related to the Gemini API:
+- Verify your API key is correct
+- Ensure your API key has access to the Gemini model
 
-### API or Database Issues
+### Volume Issues
 
-1. Check the logs in the "Deployments" tab
-2. Consider adding a Redis service to your project for better performance:
-   - Click "New" → "Database" → "Redis"
-   - Railway will automatically link it to your application
+If the RAG system doesn't find documents:
+- Check that the knowledge base volume is mounted correctly
+- Verify CSV files are uploaded to the correct path
 
-### Knowledge Base Issues
+### Performance Issues
 
-1. Make sure your knowledge base CSV files are correctly committed to your GitHub repository
-2. Check that the files are in the `knowledge_base` directory
-3. Verify the files are properly formatted
+If the app is slow or crashes:
+- Adjust workers and threads in the Dockerfile or railway.toml
+- Consider upgrading your Railway instance for more resources
 
-## Scaling Your Application
+## Monitoring and Maintenance
 
-Railway's free tier is sufficient for a college project demonstration. If you need more resources:
+- Railway provides logs and metrics under the "Metrics" tab
+- Use `/health` endpoint to check system status
+- Check application logs for any errors
 
-1. Go to "Project Settings" → "Usage"
-2. Adjust the resource limits (note: this may incur charges)
+## Scaling
 
-## Updating Your Application
+To handle more traffic:
+1. Go to "Settings" > "Resources"
+2. Increase CPU and memory allocation
+3. Adjust workers in the Dockerfile or railway.toml
 
-To update your deployed application:
+## Final Notes
 
-1. Make changes to your code
-2. Commit and push to GitHub:
-   ```bash
-   git add .
-   git commit -m "Update app"
-   git push
-   ```
-3. Railway will automatically detect changes and redeploy
-
-## Security Best Practices
-
-1. NEVER commit API keys, secrets, or passwords to your GitHub repository
-2. Always use Railway's environment variables for sensitive information
-3. Keep your repository private
-4. Regularly rotate your API keys and secrets
-
-## Important Railway Features
-
-1. **Metrics**: View your application's CPU, memory, and network usage
-2. **Logs**: Access application logs for debugging
-3. **Variables**: Manage environment variables securely
-4. **Custom Domains**: Connect your own domain if needed (premium feature)
-
-## Railway Limitations (Free Tier)
-
-- **Usage**: Railway provides $5 of free credits per month
-- **Sleeping**: Projects on the free tier may sleep after inactivity
-- **Limits**: There are limits on compute, storage, and bandwidth 
+- The application uses lazy loading for embeddings and ChromaDB
+- First requests may be slower as the system initializes
+- Changes pushed to the connected GitHub repository will trigger automatic redeployments 

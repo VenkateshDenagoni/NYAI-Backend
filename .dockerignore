@@ -1,57 +1,66 @@
-# Git files
+# Git
 .git
 .gitignore
-.github
+.gitmodules
 
-# Environment files
-.env
-.env.*
-venv/
-env/
-.venv/
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
+*.egg
+venv/
 
-# Development and testing
+# Tests
 tests/
-notebooks/
-# scripts/ - Keep scripts directory for potential startup scripts
-docs/
+pytest.ini
 
-# Logs (will be created in the container)
-*.log
-api.log
-nyai_api.log
-logs/*.log
+# Environment
+.env
+.env.local
+.env.example
 
-# Databases
-*.sqlite
-*.db
-# Keep the instance directory for SQLite databases
-# instance/ 
-
-# IDE files
+# IDE
 .idea/
 .vscode/
-.DS_Store
-*.swp
+*.sublime-project
+*.sublime-workspace
 
-# Docker files
-# .dockerignore - Keep Dockerfile in the build context
-docker-compose.yml
+# Docker
+.dockerignore
+Dockerfile*
+docker-compose*
 
-# Other
-# README.md - Keep README
-LICENSE
-.pytest_cache/
-htmlcov/
-.coverage
+# Logs
+logs/
+*.log
 
-# IMPORTANT: DO NOT exclude these directories
-# knowledge_base/ - Essential for RAG
-# src/ - Essential application code
-# requirements.txt - Essential for dependencies 
+# Notebooks
+notebooks/
+
+# Documentation
+docs/
+*.md
+
+# Local DB files - we'll recreate these in the container
+db/
+flask_session/
+
+# Keep knowledge base files - we need these for the RAG system
+!knowledge_base/ 
