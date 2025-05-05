@@ -62,8 +62,8 @@ def update_env_file():
         "DEBUG": "false",
         "LOG_LEVEL": "INFO",
         "KNOWLEDGE_BASE_DIR": "/app/knowledge_base",
-        "VECTOR_DB_PATH": "/data/vector_db",
-        "SESSION_DB_PATH": "/data/sessions",
+        "VECTOR_DB_PATH": "/app/db/chroma_rag",
+        "SESSION_DB_PATH": "/app/instance/sessions",
         "ENABLE_AUTH": "true",
         "API_KEY": "${API_KEY}",  # Will be set in Railway environment variables
         "CORS_ORIGINS": "*"  # Adjust as needed for production
@@ -190,7 +190,7 @@ def main():
         "1. Connect your GitHub repository to Railway\n"
         "2. Create a new service in Railway from your repository\n"
         "3. Set required environment variables including API_KEY\n"
-        "4. Add a persistent volume for the /data directory\n"
+        "4. Add persistent volumes for /app/knowledge_base and /app/db\n"
         "5. Deploy your application\n"
         "6. Use scripts/check_deployment.py to verify your deployment",
         title="Success",

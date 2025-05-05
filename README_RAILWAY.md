@@ -52,7 +52,9 @@ For a quick deployment, follow these steps:
 
 4. Create a new service and select your repository
 
-5. Add a persistent volume by clicking "Add Volume" and mount it at `/data`
+5. Add persistent volumes according to railway.toml:
+   - One mounted at `/app/knowledge_base` for knowledge base files
+   - One mounted at `/app/db` for the database files
 
 6. Set required environment variables (see [Environment Variables](#environment-variables))
 
@@ -103,9 +105,10 @@ This script will:
 
 1. In your Railway project, click on "New"
 2. Select "Add Volume"
-3. Set the mount path to `/data`
+3. Set the mount path to `/app/knowledge_base` for knowledge base files
 4. Set an appropriate size for your needs (start with at least 1GB)
-5. Click "Add Volume"
+5. Repeat to add another volume mounted at `/app/db` for database files
+6. Click "Add Volume"
 
 ### 5. Verify Deployment
 
@@ -127,20 +130,19 @@ The following environment variables are required:
 | FLASK_ENV | Flask environment | No | production |
 | LOG_LEVEL | Logging level | No | INFO |
 | KNOWLEDGE_BASE_DIR | Path to knowledge base | No | /app/knowledge_base |
-| VECTOR_DB_PATH | Path to vector database | No | /data/vector_db |
-| SESSION_DB_PATH | Path to session database | No | /data/sessions |
+| VECTOR_DB_PATH | Path to vector database | No | /app/db/chroma_rag |
+| SESSION_DB_PATH | Path to session database | No | /app/instance/sessions |
 | ENABLE_AUTH | Enable API key authentication | No | true |
 | CORS_ORIGINS | Allowed CORS origins | No | * |
 
 ## Persistent Storage
 
-Railway provides persistent volumes that can be mounted in your container. For NYAI Backend, we mount a volume at `/data` to store:
+Railway provides persistent volumes that can be mounted in your container. For NYAI Backend, we mount volumes at:
 
-- Vector database files
-- Session data
-- Application cache
+- `/app/knowledge_base` - For knowledge base files
+- `/app/db` - For vector database and ChromaDB files
 
-The volume persists across deployments and restarts, ensuring data durability.
+These volumes persist across deployments and restarts, ensuring data durability.
 
 ## Monitoring and Scaling
 
@@ -211,7 +213,7 @@ python scripts/check_deployment.py --url https://your-app-url.railway.app --chec
 **Solutions**:
 1. Check Railway logs for error messages
 2. Verify environment variables are correctly set
-3. Ensure persistent volume is mounted at `/data`
+3. Ensure persistent volumes are mounted at `/app/knowledge_base` and `/app/db`
 4. Check if knowledge base files are available
 
 #### Memory Issues
