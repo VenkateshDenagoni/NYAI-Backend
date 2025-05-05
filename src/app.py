@@ -56,6 +56,15 @@ def create_app():
     # Register blueprints
     app.register_blueprint(rag_routes)  # RAG routes already have /api/rag prefix
     
+    # Setup logger
+    if config.LOG_TO_CONSOLE:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(config.LOG_LEVEL)
+        formatter = logging.Formatter(config.LOG_FORMAT)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        logger.info("Console logging enabled")
+    
     # Add health check endpoint
     @app.route("/health")
     def health_check():
@@ -71,15 +80,29 @@ def create_app():
             from src.services.rag_document_service_improved import rag_document_service
             from src.services.rag_ai_service_improved import rag_ai_service
             rag_status = "healthy" if rag_document_service and rag_ai_service else "unavailable"
+            
+            # Check knowledge base status
+            kb_path = rag_document_service.knowledge_base_dir
+            kb_files = list(Path(kb_path).glob("*.csv")) if Path(kb_path).exists() else []
+            kb_status = f"found {len(kb_files)} files at {kb_path}" if kb_files else f"no files found at {kb_path}"
         except Exception as e:
             rag_status = f"error: {str(e)}"
+            kb_status = "error: could not check knowledge base"
         
         return {
             "status": "healthy",
+            "mode": "stateless" if config.STATELESS_MODE else "persistent",
+            "environment": os.getenv("NYAI_ENV", "development"),
             "dependencies": {
                 "chromadb": chroma_status,
                 "embedding_function": embedding_status,
-                "rag_service": rag_status
+                "rag_service": rag_status,
+                "knowledge_base": kb_status
+            },
+            "config": {
+                "stateless_mode": config.STATELESS_MODE,
+                "log_to_console": config.LOG_TO_CONSOLE,
+                "auth_required": config.AUTH_REQUIRED
             },
             "version": config.VERSION
         }
@@ -94,7 +117,8 @@ def create_app():
     if os.environ.get("RAILWAY_SERVICE_ID"):
         # Force garbage collection after initialization to free memory
         gc.collect()
-        app.logger.info("Forced garbage collection for Railway deployment")
+        logger.info("Forced garbage collection for Railway deployment")
+        logger.info(f"Running in {'stateless' if config.STATELESS_MODE else 'persistent'} mode")
     
     return app
 

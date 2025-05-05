@@ -3,17 +3,11 @@ builder = "NIXPACKS"
 buildCommand = "echo Building NYAI Backend..."
 
 [deploy]
-startCommand = "bash -c 'PORT=${PORT:-8080}; echo \"Using port: $PORT\"; exec gunicorn --bind $HOST:$PORT --workers 2 --threads 4 \"src.app:app\"'"
+startCommand = "bash -c 'PORT=${PORT:-8080}; echo \"Using port: $PORT\"; exec gunicorn --bind $HOST:$PORT --workers 1 --threads 8 \"src.app:app\"'"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
 [env]
 NYAI_ENV = "production"
-
-[volumes.knowledge_base]
-path = "/app/knowledge_base"
-persistent = true
-
-[volumes.db]
-path = "/app/db"
-persistent = true 
+LOG_TO_CONSOLE = "true"
+STATELESS_MODE = "true" 

@@ -56,11 +56,15 @@ notebooks/
 
 # Documentation
 docs/
-*.md
+# Don't exclude README.md and other deployment guides
+!README.md
+!RAILWAY_DEPLOYMENT.md
+!README_RAILWAY.md
 
-# Local DB files - we'll recreate these in the container
+# Local DB files - we don't need these in the container
 db/
 flask_session/
 
-# Keep knowledge base files - we need these for the RAG system
-!knowledge_base/ 
+# IMPORTANT: Do NOT exclude knowledge_base files
+!knowledge_base/
+!knowledge_base/*.csv 

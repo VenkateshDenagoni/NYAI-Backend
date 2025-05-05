@@ -33,6 +33,7 @@ class BaseConfig:
     LOG_LEVEL = logging.INFO
     LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s'
     LOG_FILE = "nyai_api.log"
+    LOG_TO_CONSOLE = os.getenv("LOG_TO_CONSOLE", "false").lower() == "true"
     
     # API settings
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -48,6 +49,7 @@ class BaseConfig:
     
     # Security settings
     AUTH_REQUIRED = False
+    API_KEY = os.getenv("API_KEY")
     
     # Prompt template paths
     PROMPT_TEMPLATES_DIR = Path(__file__).parent / "prompts"
@@ -58,14 +60,24 @@ class BaseConfig:
     
     # Feature flags
     ENABLE_CONTENT_SAFETY = True
+    STATELESS_MODE = os.getenv("STATELESS_MODE", "false").lower() == "true"
     
     # Health checks
     HEALTH_CHECK_TIMEOUTS = 5  # seconds
+    
+    # Paths
+    KNOWLEDGE_BASE_DIR = os.getenv("KNOWLEDGE_BASE_DIR", 
+                                   Path(__file__).parent.parent / "knowledge_base")
+    VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH", 
+                              Path(__file__).parent.parent / "db" / "chroma_rag")
+    SESSION_DB_PATH = os.getenv("SESSION_DB_PATH", 
+                               Path(__file__).parent.parent / "instance" / "sessions")
 
 class DevelopmentConfig(BaseConfig):
     """Development configuration."""
     LOG_LEVEL = logging.DEBUG
     RATE_LIMIT_ENABLED = False
+    LOG_TO_CONSOLE = True
     
 class ProductionConfig(BaseConfig):
     """Production configuration."""
@@ -84,6 +96,7 @@ class TestingConfig(BaseConfig):
     LOG_LEVEL = logging.DEBUG
     CACHE_TTL = 1  # Short cache for testing
     ENABLE_CONTENT_SAFETY = False
+    STATELESS_MODE = True
 
 # Select config based on environment
 def get_config():

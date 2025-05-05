@@ -1,126 +1,217 @@
-# NYAI Backend - Railway Deployment Guide
+# NYAI Backend Deployment on Railway
 
-This guide provides step-by-step instructions to deploy the NYAI Backend to Railway directly from GitHub.
+This document provides detailed technical information about the stateless deployment approach for the NYAI Backend on Railway.
 
-## Prerequisites
+## Stateless Architecture Overview
 
-1. GitHub account with the NYAI Backend repository
-2. Railway account ([sign up here](https://railway.app/))
-3. Google Gemini API key ([get one here](https://aistudio.google.com/))
+The NYAI Backend application has been redesigned to support a stateless deployment model that eliminates the need for persistent volumes on Railway. This approach:
 
-## Deployment Steps
+1. Packages knowledge base files with the Docker image
+2. Uses an in-memory ChromaDB database
+3. Rebuilds the vector database on each deploy/restart
 
-### 1. Fork the Repository (if needed)
+## Key Components
 
-If you don't own the repository, fork it to your GitHub account.
+### 1. Dockerfile
 
-### 2. Connect to Railway
+The Dockerfile is configured to:
+- Use Python 3.10 as the base image
+- Copy knowledge base files into the image
+- Set up environment variables for stateless operation
+- Use a startup script to verify the knowledge base and perform garbage collection
 
-1. Log in to [Railway](https://railway.app/)
-2. Click "New Project" > "Deploy from GitHub repo"
-3. Select the NYAI Backend repository
-4. Railway will automatically detect the project configuration
+Key sections in the Dockerfile:
+```dockerfile
+# Copy knowledge base files (do this early for better caching)
+COPY knowledge_base/*.csv /app/data/knowledge_base/
 
-### 3. Configure Environment Variables
-
-In the Railway dashboard for your project:
-
-1. Go to the "Variables" tab
-2. Add the following environment variables:
-
-```
-GOOGLE_API_KEY=your_gemini_api_key_here
-SECRET_KEY=your_secure_random_string
-NYAI_ENV=production
-PORT=8080
-HOST=0.0.0.0
-DEBUG=False
-AUTH_REQUIRED=True
+# Set environment variables
+ENV STATELESS_MODE=true
+ENV KNOWLEDGE_BASE_DIR=/app/data/knowledge_base
 ```
 
-Generate a secure SECRET_KEY with: `openssl rand -hex 32` or any random string generator.
+### 2. ChromaDB Configuration
 
-### 4. Configure Persistent Storage
+The RAG document service has been updated to support both stateless and persistent modes:
 
-The application requires persistent storage for the knowledge base and vector database:
+```python
+def _initialize_chromadb(self):
+    if self.stateless_mode:
+        # Use in-memory ChromaDB for stateless mode
+        self.chroma_client = chromadb.Client()
+        logger.info("Initialized ChromaDB in stateless in-memory mode")
+    else:
+        # Use persistent ChromaDB
+        self.chroma_client = chromadb.PersistentClient(path=self.vector_db_path)
+        logger.info(f"Initialized ChromaDB with persistent storage at {self.vector_db_path}")
+```
 
-1. Go to the "Volumes" tab
-2. Create two volumes:
-   - Name: `knowledge_base`, Mount Path: `/app/knowledge_base`
-   - Name: `db`, Mount Path: `/app/db`
+### 3. Railway Configuration
 
-### 5. Deploy the Application
+The `railway.toml` file has been simplified to remove persistent volumes:
 
-1. Go to the "Settings" tab
-2. Click "Generate Domain" to get a public URL for your app
-3. Railway will automatically deploy the application
+```toml
+[build]
+builder = "NIXPACKS"
+buildCommand = "echo Building NYAI Backend..."
 
-### 6. Upload Knowledge Base Data
+[deploy]
+startCommand = "gunicorn --bind $HOST:$PORT --workers 2 --threads 8 'src.app:app'"
+healthcheckPath = "/health"
+restartPolicyType = "ON_FAILURE"
 
-You need to upload your knowledge base files to the persistent volume. There are two ways to do this:
+[deploy.envVars]
+NYAI_ENV = "production"
+LOG_TO_CONSOLE = "true"
+STATELESS_MODE = "true"
+```
 
-#### Option 1: Use Railway CLI
+## Technical Details
 
-1. Install Railway CLI: `npm i -g @railway/cli`
-2. Login: `railway login`
-3. Link to your project: `railway link`
-4. Upload CSV files: `railway upload /path/to/your/knowledge_base/*.csv /app/knowledge_base/`
+### Knowledge Base Fallback Mechanism
 
-#### Option 2: Use Docker and Railway Volumes
+The application implements a fallback mechanism for finding knowledge base files:
 
-1. In the Railway dashboard, go to Volumes and find the volume ID
-2. Use a custom container to copy files to the volume (using Railway's documentation)
+```python
+# First try environment variable location
+if Path(self.knowledge_base_dir).exists() and list(Path(self.knowledge_base_dir).glob("*.csv")):
+    logger.info(f"Using knowledge base directory: {self.knowledge_base_dir}")
+# Then try packaged location in Docker image
+elif Path("/app/data/knowledge_base").exists() and list(Path("/app/data/knowledge_base").glob("*.csv")):
+    self.knowledge_base_dir = "/app/data/knowledge_base"
+    logger.info(f"Using packaged knowledge base at: {self.knowledge_base_dir}")
+# Then try relative directory
+elif Path("./knowledge_base").exists() and list(Path("./knowledge_base").glob("*.csv")):
+    self.knowledge_base_dir = "./knowledge_base"
+    logger.info(f"Using knowledge base at: {self.knowledge_base_dir}")
+else:
+    logger.warning("No valid knowledge base directory found after trying fallbacks")
+```
 
-### 7. Verify Deployment
+### Startup Process
 
-1. Once deployed, open the generated Railway URL
-2. Add `/health` to the URL to check the API status
-3. You should see a JSON response showing components health status
+The startup script performs several important functions:
+1. Verifies environment variables
+2. Checks for knowledge base files
+3. Performs garbage collection
+4. Starts the application with the optimized parameters
 
-## Troubleshooting
+```bash
+# Verify knowledge base files
+echo "Verifying knowledge base files..."
+KB_DIR=${KNOWLEDGE_BASE_DIR:-/app/data/knowledge_base}
+if [ -d "$KB_DIR" ]; then
+    echo "Knowledge base directory found at: $KB_DIR"
+    FILE_COUNT=$(find "$KB_DIR" -type f -name "*.csv" | wc -l)
+    echo "Found $FILE_COUNT CSV files in knowledge base"
+fi
+```
 
-### API Key Issues
+### Memory Management
 
-#### Google Gemini API Key (CRITICAL)
-The GOOGLE_API_KEY is absolutely required for the application to function:
-- The application will fail to start or respond to queries without a valid Google Gemini API key
-- Obtain a key from [Google AI Studio](https://aistudio.google.com/)
-- Ensure your API key has access to the Gemini model (gemini-2.0-flash-001)
-- Set this as an environment variable in Railway
+The application includes specific memory optimization for Railway:
 
-#### Authentication API Key
-If you're seeing authentication errors with API requests:
-- Verify API_KEY is set in Railway environment variables 
-- Ensure your client is sending the API key in the X-API-Key header
-- Check that ENABLE_AUTH is set to "true" if you want authentication
+1. Garbage collection is forced after initialization
+2. The default worker count is reduced from 8 to 2
+3. Thread count is increased from 4 to 8 for better resource usage
 
-### Volume Issues
+## Deployment Process
 
-If the RAG system doesn't find documents:
-- Check that the knowledge base volume is mounted correctly
-- Verify CSV files are uploaded to the correct path
+### Quick Deployment Steps
 
-### Performance Issues
+1. Ensure knowledge base CSV files are in the `knowledge_base/` directory
+2. Push code to GitHub
+3. Connect repository to Railway
+4. Set required environment variables (especially `GOOGLE_API_KEY` and `API_KEY`)
+5. Deploy
 
-If the app is slow or crashes:
-- Adjust workers and threads in the Dockerfile or railway.toml
-- Consider upgrading your Railway instance for more resources
+### Required Environment Variables
 
-## Monitoring and Maintenance
+| Variable | Description | Required |
+|----------|-------------|----------|
+| GOOGLE_API_KEY | Google Gemini API key | Yes |
+| API_KEY | API authentication key | Yes |
+| STATELESS_MODE | Set to "true" | No (default: true) |
+| LOG_TO_CONSOLE | Set to "true" | No (default: true) |
 
-- Railway provides logs and metrics under the "Metrics" tab
-- Use `/health` endpoint to check system status
-- Check application logs for any errors
+## Monitoring and Debugging
 
-## Scaling
+### Health Check Endpoint
 
-To handle more traffic:
-1. Go to "Settings" > "Resources"
-2. Increase CPU and memory allocation
-3. Adjust workers in the Dockerfile or railway.toml
+The application provides a `/health` endpoint that returns detailed information about the application status:
 
-## Final Notes
+```json
+{
+  "status": "healthy",
+  "mode": "stateless",
+  "environment": "production",
+  "dependencies": {
+    "chromadb": "healthy",
+    "embedding_function": "healthy",
+    "rag_service": "healthy",
+    "knowledge_base": "found 3 files at /app/data/knowledge_base"
+  },
+  "config": {
+    "stateless_mode": true,
+    "log_to_console": true,
+    "auth_required": true
+  },
+  "version": "1.0.0"
+}
+```
 
-- The application uses lazy loading for embeddings and ChromaDB
-- First requests may be slower as the system initializes
-- Changes pushed to the connected GitHub repository will trigger automatic redeployments 
+### Logging
+
+Logs are streamed to console and can be viewed in the Railway dashboard.
+
+### Common Issues and Solutions
+
+1. **Knowledge base files not found**
+   - Verify `.dockerignore` does not exclude knowledge base files
+   - Check Docker build logs to confirm files are copied
+   - Check startup logs to confirm files are found
+
+2. **ChromaDB errors**
+   - If you see "embeddings_queue table already exists", this is a normal warning
+   - In-memory ChromaDB will rebuild on each restart
+
+3. **Slow first request**
+   - The first request after deployment will be slower as it builds the vector database
+   - Subsequent requests will be faster
+
+## Performance Considerations
+
+### Tradeoffs
+
+The stateless approach has these tradeoffs:
+
+**Advantages:**
+- Simplified deployment (no volumes to manage)
+- No risk of database corruption
+- Easier to upgrade (just redeploy)
+- Automatic self-healing on restart
+
+**Disadvantages:**
+- Longer cold start (rebuilding vector DB)
+- Slightly higher memory usage
+- Need to redeploy to update knowledge base
+
+### Optimizations
+
+1. Knowledge base files are copied early in the Dockerfile for better layer caching
+2. Worker and thread counts are optimized for Railway resource limits
+3. Garbage collection is performed at startup to free memory
+4. ChromaDB is initialized only when needed (lazy loading)
+
+## Future Improvements
+
+Potential improvements for the stateless deployment:
+
+1. Implement pre-built vector database packaging
+2. Add support for knowledge base updates through API
+3. Improve error recovery mechanisms
+4. Add support for external vector database services
+
+---
+
+For simpler deployment instructions, see [README_RAILWAY.md](./README_RAILWAY.md).

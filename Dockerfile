@@ -1,46 +1,44 @@
 FROM python:3.10-slim
 
+# Set working directory
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     build-essential \
     libffi-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better cache utilization
+# Copy and install requirements first (better caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
+# Create data directories
+RUN mkdir -p /app/data/knowledge_base /app/logs
+
+# Copy knowledge base files (do this early for better caching)
+COPY knowledge_base/*.csv /app/data/knowledge_base/
+
+# Copy startup script and make it executable
+COPY startup.sh .
+RUN chmod +x startup.sh
+
+# Copy application code
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /app/db/chroma_rag
-RUN mkdir -p /app/logs
+# Set environment variables
+ENV NYAI_ENV=production \
+    PORT=8080 \
+    HOST=0.0.0.0 \
+    DEBUG=False \
+    STATELESS_MODE=true \
+    LOG_TO_CONSOLE=true \
+    KNOWLEDGE_BASE_DIR=/app/data/knowledge_base \
+    RAILWAY_SERVICE_ID=nyai_backend_simplified
 
-# Set environment variable for production
-ENV NYAI_ENV=production
-ENV PORT=8080
-ENV HOST=0.0.0.0
-ENV DEBUG=False
-
-# Railway-specific environment variable to enable garbage collection
-ENV RAILWAY_SERVICE_ID=nyai-backend
-
-# Expose the port
+# Expose port
 EXPOSE 8080
 
-# Create startup script
-RUN echo '#!/bin/bash\n\
-\n\
-echo "Starting NYAI Backend..."\n\
-# Ensure PORT has a value\n\
-PORT=${PORT:-8080}\n\
-echo "Using port: $PORT"\n\
-exec gunicorn --bind $HOST:$PORT --workers 2 --threads 4 "src.app:app"\n\
-' > /app/start.sh && chmod +x /app/start.sh
-
-# Run the startup script
-CMD ["/app/start.sh"] 
+# Start the application using our startup script
+CMD ["./startup.sh"] 

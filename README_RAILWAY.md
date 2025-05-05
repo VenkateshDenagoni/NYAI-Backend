@@ -1,6 +1,6 @@
-# NYAI Backend Deployment on Railway
+# NYAI Backend Deployment on Railway - Simplified Version
 
-This document provides comprehensive information for deploying the NYAI Backend application on Railway, a modern PaaS (Platform as a Service) that simplifies the deployment process.
+This document provides a streamlined guide for deploying the NYAI Backend application on Railway without persistent volumes for maximum simplicity.
 
 ## Table of Contents
 
@@ -9,11 +9,7 @@ This document provides comprehensive information for deploying the NYAI Backend 
 - [Quick Start](#quick-start)
 - [Step-by-Step Deployment Guide](#step-by-step-deployment-guide)
 - [Environment Variables](#environment-variables)
-- [Persistent Storage](#persistent-storage)
-- [Monitoring and Scaling](#monitoring-and-scaling)
-- [Deployment Scripts](#deployment-scripts)
 - [Troubleshooting](#troubleshooting)
-- [FAQ](#faq)
 
 ## Prerequisites
 
@@ -21,18 +17,15 @@ Before deploying to Railway, ensure you have:
 
 1. A GitHub account with your NYAI Backend repository
 2. A Railway account (sign up at [railway.app](https://railway.app))
-3. Knowledge base files prepared for deployment
-4. Python 3.8+ (for running local preparation scripts)
+3. Google Gemini API key
 
 ## Deployment Files
 
 The following files are essential for Railway deployment:
 
-- `Dockerfile` - Container definition for the application
-- `railway.toml` - Railway-specific configuration
-- `.dockerignore` - Specifies files to exclude from the container
-- `.env.production` - Environment variables for production (don't commit secrets)
-- `RAILWAY_DEPLOYMENT.md` - Detailed deployment guide
+- `Dockerfile` - Container definition with knowledge base files included
+- `railway.toml` - Railway-specific configuration (simplified)
+- `.dockerignore` - Ensures knowledge base files are included in the build
 
 ## Quick Start
 
@@ -47,27 +40,15 @@ For a quick deployment, follow these steps:
 
 3. Create a new service and select your repository
 
-4. Add persistent volumes according to railway.toml:
-   - One mounted at `/app/knowledge_base` for knowledge base files
-   - One mounted at `/app/db` for the database files
+4. Set required environment variables (see [Environment Variables](#environment-variables))
 
-5. Set required environment variables (see [Environment Variables](#environment-variables))
-
-6. Deploy your application
+5. Deploy your application
 
 ## Step-by-Step Deployment Guide
 
-### 1. Prepare Your Repository
+### 1. Verify Your Repository Contains Knowledge Base Files
 
-Before deploying to Railway, ensure your repository has all the necessary deployment files:
-
-```bash
-# Clone the repository (if you haven't already)
-git clone https://github.com/yourusername/nyai-backend.git
-cd nyai-backend
-```
-
-Make sure your repository includes all required deployment files such as `Dockerfile`, `railway.toml`, and `.dockerignore`.
+Make sure your repository includes the knowledge base CSV files in the `knowledge_base/` directory.
 
 ### 2. Connect to Railway
 
@@ -75,7 +56,6 @@ Make sure your repository includes all required deployment files such as `Docker
 2. Click "New Project"
 3. Select "Deploy from GitHub repo"
 4. Choose your NYAI Backend repository
-5. Railway will automatically detect the Dockerfile and build your application
 
 ### 3. Configure Environment Variables
 
@@ -84,19 +64,10 @@ Make sure your repository includes all required deployment files such as `Docker
 3. Add required environment variables (see [Environment Variables](#environment-variables))
 4. Click "Deploy" to apply changes
 
-### 4. Add Persistent Storage
-
-1. In your Railway project, click on "New"
-2. Select "Add Volume"
-3. Set the mount path to `/app/knowledge_base` for knowledge base files
-4. Set an appropriate size for your needs (start with at least 1GB)
-5. Repeat to add another volume mounted at `/app/db` for database files
-6. Click "Add Volume"
-
-### 5. Verify Deployment
+### 4. Verify Deployment
 
 1. Wait for deployment to complete
-2. Test the application with sample queries
+2. Test the application with the `/health` endpoint
 
 ## Environment Variables
 
@@ -106,115 +77,73 @@ The following environment variables are required:
 |----------|-------------|----------|---------|
 | GOOGLE_API_KEY | Google Gemini API key for LLM functionality | Yes | - |
 | API_KEY | Authentication key for API access | Yes | - |
-| PORT | Application port (provided by Railway) | No | Set by Railway |
-| FLASK_ENV | Flask environment | No | production |
-| LOG_LEVEL | Logging level | No | INFO |
-| KNOWLEDGE_BASE_DIR | Path to knowledge base | No | /app/knowledge_base |
-| VECTOR_DB_PATH | Path to vector database | No | /app/db/chroma_rag |
-| SESSION_DB_PATH | Path to session database | No | /app/instance/sessions |
-| ENABLE_AUTH | Enable API key authentication | No | true |
-| CORS_ORIGINS | Allowed CORS origins | No | * |
+| STATELESS_MODE | Enable stateless mode (no persistent volumes) | No | true |
+| LOG_TO_CONSOLE | Enable console logging | No | true |
 
-## Persistent Storage
+Example environment variables setup in Railway:
 
-Railway provides persistent volumes that can be mounted in your container. For NYAI Backend, we mount volumes at:
-
-- `/app/knowledge_base` - For knowledge base files
-- `/app/db` - For vector database and ChromaDB files
-
-These volumes persist across deployments and restarts, ensuring data durability.
-
-## Monitoring and Scaling
-
-### Monitoring
-
-Railway provides basic monitoring capabilities:
-
-1. Navigate to your service in the Railway dashboard
-2. Click on the "Metrics" tab to view:
-   - CPU usage
-   - Memory usage
-   - Disk usage
-   - Network I/O
-
-For more detailed monitoring, consider integrating with:
-- Prometheus for metrics collection
-- Grafana for visualization
-- Sentry for error tracking
-
-### Scaling
-
-To scale your application on Railway:
-
-1. Navigate to your service in the Railway dashboard
-2. Click on "Settings"
-3. Adjust resources as needed:
-   - CPU
-   - Memory
-   - Disk space
-
-## Deployment Scripts
-
-The deployment has been simplified and no longer requires any scripts. Simply:
-
-1. Ensure your code is ready for deployment
-2. Push to GitHub
-3. Connect to Railway 
-4. Configure environments and volumes
-5. Deploy
+```
+GOOGLE_API_KEY=your_gemini_api_key_here
+API_KEY=your_api_key_here
+STATELESS_MODE=true
+LOG_TO_CONSOLE=true
+```
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### Application Fails to Start
+#### API Key Issues
 
 **Symptoms**:
-- Railway shows deployment failed
-- Logs show application crash during startup
+- Application not responding to queries
+- Errors in logs about missing API key
 
 **Solutions**:
-1. Check Railway logs for error messages
-2. Verify environment variables are correctly set
-3. Ensure persistent volumes are mounted at `/app/knowledge_base` and `/app/db`
-4. Check if knowledge base files are available
+1. Verify GOOGLE_API_KEY is set in Railway environment variables
+2. Check API_KEY is set for authentication
 
-#### Memory Issues
+#### Knowledge Base Files Not Found
 
 **Symptoms**:
-- Application crashes under load
-- Out of memory errors in logs
+- Warning in logs: "No valid knowledge base directory found after trying fallbacks"
+- RAG functionality not working properly
 
 **Solutions**:
-1. Increase memory allocation in Railway settings
-2. Optimize knowledge base files before deployment
-3. Adjust application configuration to use less memory
+1. Check startup logs to confirm knowledge base files were found
+2. Verify the Docker build included the knowledge base files
+3. Make sure `.dockerignore` doesn't exclude knowledge base files
 
-### Getting Help
+#### Performance Issues
 
-If you encounter issues not covered here:
+**Symptoms**:
+- Slow response times, especially after deployment or cold starts
 
-1. Check the Railway logs for error messages
-2. Review the [NYAI Backend documentation](./docs/)
-3. Open an issue on the GitHub repository
+**Solutions**:
+1. First request after deployment will be slower as it builds the vector database
+2. Subsequent requests should be faster
 
-## FAQ
+#### Health Check
 
-**Q: How much does it cost to run on Railway?**
-A: Railway offers various pricing tiers. The NYAI Backend typically requires at least the Hobby tier with added storage depending on your knowledge base size.
+If you encounter issues, check the health endpoint:
+```
+https://your-railway-url.app/health
+```
 
-**Q: Can I use my own domain name?**
-A: Yes. Railway allows custom domains. Navigate to your service settings to configure a custom domain.
-
-**Q: How do I update my deployment?**
-A: Simply push changes to your connected GitHub repository. Railway will automatically rebuild and deploy.
-
-**Q: How do I rollback to a previous version?**
-A: In the Railway dashboard, navigate to your deployment history and select a previous deployment to restore.
-
-**Q: Can I schedule automatic backups?**
-A: Railway doesn't provide built-in scheduled backups. Consider implementing a custom backup solution using GitHub Actions or a separate scheduled task.
+This will show the status of all components, including ChromaDB and embedding function availability.
 
 ---
 
-For more detailed information, please refer to the [RAILWAY_DEPLOYMENT.md](./RAILWAY_DEPLOYMENT.md) file and [Railway Documentation](https://docs.railway.app/). 
+## Important Note
+
+This deployment uses a **stateless approach** meaning:
+- No persistent volumes are used
+- Knowledge base files are packaged with the application
+- ChromaDB runs in memory instead of with persistent storage
+- The database is rebuilt on each deployment
+
+This approach maximizes simplicity and reliability at the cost of:
+- Slightly slower cold starts
+- Need to redeploy to update knowledge base files
+
+For most use cases, this simplicity is worth the tradeoff! 
