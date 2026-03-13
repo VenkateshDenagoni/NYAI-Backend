@@ -48,6 +48,10 @@ flask_session/
 .env
 .env.*
 .env.production
+.env.local
+.env.development
+.env.staging
+.env.test
 !.env.example
 
 # Jupyter Notebooks

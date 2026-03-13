@@ -38,6 +38,14 @@ def create_app():
     # Load configuration
     app.config.from_object(config)
     
+    # Validate and set Flask SECRET_KEY from environment (required for security)
+    if not config.SECRET_KEY:
+        raise ValueError(
+            "SECRET_KEY environment variable is not set. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    app.secret_key = config.SECRET_KEY
+    
     # Use in-memory implementations instead of Redis
     app.config['CACHE_TYPE'] = 'SimpleCache'
     app.config['SESSION_TYPE'] = 'null'  # Disable sessions completely

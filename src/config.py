@@ -48,6 +48,7 @@ class BaseConfig:
     RETRY_MAX_SECONDS = 10
     
     # Security settings
+    SECRET_KEY = os.getenv("SECRET_KEY")
     AUTH_REQUIRED = False
     API_KEY = os.getenv("API_KEY")
     
