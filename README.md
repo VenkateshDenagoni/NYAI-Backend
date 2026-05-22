@@ -90,6 +90,7 @@ The assistant automatically detects the language of user queries and responds in
 ## Contributors
 
 D. Venkatesh
+D. Prashanth
 K. Kalyan
 J. Vagdevi
-Anusha
+Ch. Anusha
